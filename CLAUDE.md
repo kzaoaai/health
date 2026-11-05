@@ -15,9 +15,9 @@ npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 
 Vite proxies `/api` → `localhost:3001`, so work against `http://localhost:5173` in dev. In production Express serves `client/dist` and has an `app.get('*')` SPA fallback, so the whole app is on `:3001`.
 
-There is no test suite and no linter configured. Verification is `node --check server.js` / `node --check db.js` plus exercising endpoints with curl against a running dev server.
+`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`). There is no linter. Beyond that, verification is `node --check server.js` / `node --check db.js` / `node --check auth.js` plus exercising endpoints with curl against a running dev server.
 
-`ANTHROPIC_API_KEY` is required — `server.js` calls `process.exit(1)` at boot without it. `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
+`ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
 
 ## Architecture
 
@@ -52,7 +52,11 @@ Schema evolution in `getDb()`: new **tables/indexes** go in the `SCHEMA` string 
 2. Client shows a preview so the user can review/toggle values — this lives inline in `ImportSection.jsx`; `components/OcrPreviewModal.jsx` is dead code (nothing imports it, and its `onConfirm` drops `file_hash`/`filename`).
 3. `POST /import/labs-confirm` inserts the `lab_reports` row first, then stamps its id onto every `metrics` row it writes via `lab_report_id`.
 
-That stamp is what makes `DELETE /lab-reports/:id` able to cleanly undo a bad import (it also has a legacy fallback matching on date + marker name for rows written before the column existed). The OCR model id is hardcoded in the `anthropic.messages.create` call in `/import/labs-pdf`.
+That stamp is what makes `DELETE /lab-reports/:id` able to cleanly undo a bad import (it also has a legacy fallback matching on date + marker name for rows written before the column existed). The OCR model id comes from `OCR_MODEL`.
+
+### Access control (`auth.js`, optional)
+
+Off unless `SERVE_SOCKET` is set, so a default install behaves as before. With it set, the server also listens on that unix socket and believes the identity header (`IDENTITY_HEADER`, default `Tailscale-User-Login`, as set by `tailscale serve`) **only on the socket**; the TCP port then answers `/healthz` alone. Each http server tags `req.door` (`tcp`/`socket`) and `gate()` runs before the body parser and static files. On the socket the login must be in `ALLOWED_USERS`; `requireUser` hides any profile whose `owners` (in `users.json`) lacks the login, answering 404 as if it did not exist; `GET /api/users` filters the same way; `POST /api/users` sets `owners` to the creator; `PATCH /api/users/:id` can change `owners`. Browser writes must carry `Sec-Fetch-Site: same-origin`; requests without that header (Health Auto Export) pass. `DEV_USER` is a stand-in login on TCP for development and is refused next to `SERVE_SOCKET`. `/healthz` sits before the gate on every door. `cors()` is opt-in through `CORS_ORIGIN`.
 
 ### Apple Health ingest (`POST /api/:userId/import/apple-health`)
 

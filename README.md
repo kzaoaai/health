@@ -91,11 +91,32 @@ labels:
    docker compose up --build -d
    ```
 
-   No `ports:` mapping is needed: docktail handles exposing the service on the tailnet, so the container only needs to be reachable on the Docker network. Data persists in a bind-mounted volume (`/data` in the container). Set `ANTHROPIC_API_KEY` in a `.env` file next to `compose.yaml`.
+   No `ports:` mapping is needed: docktail handles exposing the service on the tailnet, so the container only needs to be reachable on the Docker network. Data persists in a bind-mounted volume (`/data` in the container). To turn on OCR, set `ANTHROPIC_API_KEY` in a `.env` file next to `compose.yaml`; without it everything but lab-file import works.
 
 3. **Point Health Auto Export at the tailnet address** (`https://health.<your-tailnet>.ts.net`, not `localhost`) in the automations described below, so your iPhone can sync from anywhere, not just your home Wi-Fi.
 
 Prefer a prebuilt image to `--build`? Images are published to [`ghcr.io/spuder/health`](https://github.com/spuder/health/pkgs/container/health) on every push to `main` (`latest`, `sha-<short>`) and on `v*` tags (`1.2.3`, `1.2`), for `linux/amd64` and `linux/arm64`. To use one, swap `build: .` for `image: ghcr.io/spuder/health:latest` in [`compose.yaml`](./compose.yaml).
+
+## Access control (optional)
+
+By default anyone who can reach the server sees every profile. To give each person only their own, put `tailscale serve` (or any proxy that sets a trusted identity header) in front of a unix socket:
+
+```yaml
+environment:
+  - SERVE_SOCKET=/run/health/serve.sock
+  - ALLOWED_USERS=you@example.com,partner@example.com
+volumes:
+  - /var/lib/health/sock:/run/health
+```
+
+```bash
+tailscale serve --bg --https=443 unix:/var/lib/health/sock/serve.sock
+```
+
+- The login (`Tailscale-User-Login`, or the header named in `IDENTITY_HEADER`) is believed **only on the socket**, which only the proxy connects to. The TCP port then answers `/healthz` alone, for healthchecks and uptime monitors.
+- Logins not in `ALLOWED_USERS` are refused. A profile is visible only to the logins in its `owners` list in `users.json`; a profile you create is yours. Share one with `PATCH /api/users/<id>` and `{"owners": ["you@example.com", "partner@example.com"]}`.
+- Profiles created before you turn this on have no owners and stay hidden (the server names them at startup) until you add `"owners": ["you@example.com"]` to them in `users.json`.
+- Health Auto Export keeps working: requests from the phone carry the phone's tailnet login, so it must be signed in to Tailscale as the profile's owner.
 
 ## Getting Your User ID
 

@@ -35,19 +35,22 @@ jobs:
       run: |
         node --check server.js
         node --check db.js
+        node --check auth.js
 
     - name: Install dependencies
       run: |
         npm ci
         npm ci --prefix client
 
+    - name: Unit tests
+      run: npm test
+
     - name: Build client
       run: npm run build --prefix client
 
-    # There is no test suite, so this proves the API boots and answers requests.
+    # Proves the API boots (with no Anthropic key, so OCR off) and answers requests.
     - name: Boot the API and hit /api/users
       env:
-        ANTHROPIC_API_KEY: ci-placeholder
         DATA_DIR: ${{ runner.temp }}/data
       run: |
         mkdir -p "$DATA_DIR"

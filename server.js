@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import http from 'http'
 import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
@@ -9,29 +10,56 @@ import multer from 'multer'
 
 import Anthropic from '@anthropic-ai/sdk'
 import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUserDna, DATA_DIR } from './db.js'
+import { loadAuthConfig, gate, canSee, unownedProfiles, parseOwners } from './auth.js'
 
-if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_api_key_here') {
-  console.error('FATAL: ANTHROPIC_API_KEY is not set. Add it to your .env file.')
+// OCR of lab PDFs/PNGs/CSVs is the only feature that needs the Anthropic API.
+// Without a key the dashboard runs normally and the lab-file import answers 503.
+const OCR_ENABLED = Boolean(process.env.ANTHROPIC_API_KEY) && process.env.ANTHROPIC_API_KEY !== 'your_api_key_here'
+const anthropic = OCR_ENABLED ? new Anthropic() : null  // reads ANTHROPIC_API_KEY from env
+const OCR_MODEL = process.env.OCR_MODEL || 'claude-opus-5'
+if (!OCR_ENABLED) console.warn('[ocr] ANTHROPIC_API_KEY is not set: lab file import (OCR) is off, everything else works')
+
+let auth
+try {
+  auth = loadAuthConfig()
+} catch (err) {
+  console.error(`FATAL: ${err.message}`)
   process.exit(1)
 }
-
-const anthropic = new Anthropic()  // reads ANTHROPIC_API_KEY from env
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const upload = multer({ storage: multer.memoryStorage() })
 const PORT = process.env.PORT || 3001
 
-app.use(cors())
+// Answered on every door before the gate, so a container healthcheck or an
+// uptime monitor needs no login. It says nothing about anyone's data.
+app.get('/healthz', (req, res) => {
+  try {
+    fs.accessSync(DATA_DIR, fs.constants.R_OK | fs.constants.W_OK)
+    res.json({ ok: true, ocr: OCR_ENABLED, auth: auth.enabled })
+  } catch (err) {
+    res.status(503).json({ ok: false, error: `data directory not usable: ${err.code ?? err.message}` })
+  }
+})
+
+app.use(gate(auth))
+
+// The SPA is served from this same origin, and Vite proxies /api in development,
+// so cross-origin access is only for a separate front end and must be named.
+if (process.env.CORS_ORIGIN) {
+  app.use(cors({ origin: process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean) }))
+}
 app.use(express.json({ limit: '50mb' }))
 app.use(express.static(path.join(__dirname, 'client/dist')))
 
 // ── Helpers ───────────────────────────────────────────────────
 
+// A profile the caller may not see answers exactly like one that does not exist.
 function requireUser(req, res, next) {
   const users = readUsers()
   const user = users.find(u => u.id === req.params.userId)
-  if (!user) return res.status(404).json({ error: `User '${req.params.userId}' not found` })
+  if (!user || !canSee(user, req, auth)) return res.status(404).json({ error: `User '${req.params.userId}' not found` })
   req.user = user
   next()
 }
@@ -110,7 +138,7 @@ function fallbackUserId(users) {
 }
 
 app.get('/api/users', (req, res) => {
-  res.json(readUsers())
+  res.json(readUsers().filter(u => canSee(u, req, auth)))
 })
 
 app.post('/api/users', (req, res) => {
@@ -142,6 +170,7 @@ app.post('/api/users', (req, res) => {
     height_inches: height_inches || null,
     birth_year: birth_year || null,
   }
+  if (auth.enabled) user.owners = [req.who]
   users.push(user)
   writeUsers(users)
   getDb(id)  // init DB immediately
@@ -152,9 +181,17 @@ app.post('/api/users', (req, res) => {
 app.patch('/api/users/:userId', requireUser, (req, res) => {
   const users = readUsers()
   const idx = users.findIndex(u => u.id === req.params.userId)
-  const { birth_year, height_inches } = req.body
+  const { birth_year, height_inches, owners } = req.body
   if (birth_year != null) users[idx].birth_year = birth_year
   if (height_inches != null) users[idx].height_inches = height_inches
+  // Share a profile with another login, or hand it over. Only an owner gets
+  // here (requireUser), and the list may not be emptied, which would orphan it.
+  if (owners !== undefined) {
+    if (!auth.enabled) return res.status(400).json({ error: 'owners only applies when access control is on (SERVE_SOCKET)' })
+    const parsed = parseOwners(owners)
+    if (!parsed) return res.status(400).json({ error: 'owners must be a non-empty list of logins' })
+    users[idx].owners = parsed
+  }
   writeUsers(users)
   res.json({ ok: true, user: users[idx] })
 })
@@ -1402,7 +1439,12 @@ app.delete('/api/:userId/lab-reports/:id', requireUser, (req, res) => {
   })
 })
 
-app.post('/api/:userId/import/labs-pdf', requireUser, upload.single('pdf'), async (req, res) => {
+function requireOcr(req, res, next) {
+  if (!OCR_ENABLED) return res.status(503).json({ error: 'Lab file import is off: set ANTHROPIC_API_KEY on the server to turn on OCR' })
+  next()
+}
+
+app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
   const nameLower = req.file.originalname?.toLowerCase() ?? ''
@@ -1443,7 +1485,7 @@ app.post('/api/:userId/import/labs-pdf', requireUser, upload.single('pdf'), asyn
         ]
 
     const msg = await anthropic.messages.create({
-      model: 'claude-opus-5',
+      model: OCR_MODEL,
       max_tokens: 16000,
       system: LAB_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
@@ -1866,6 +1908,29 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/dist/index.html'))
 })
 
-app.listen(PORT, () => {
+// Two doors into the same app. The gate (auth.js) believes a login only on the
+// socket, so each server marks which door a request came through.
+const tcp = http.createServer((req, res) => { req.door = 'tcp'; app(req, res) })
+tcp.listen(PORT, () => {
   console.log(`Health Dashboard running on http://localhost:${PORT}`)
+  if (!auth.enabled) {
+    console.warn('[auth] SERVE_SOCKET is not set: access control is off, every request sees every profile')
+  } else if (auth.serveSocket) {
+    console.log('[auth] the TCP port answers /healthz only; the dashboard is on the socket')
+  } else {
+    console.warn(`[auth] DEV_USER: every TCP request is treated as ${auth.devUser} (development only)`)
+  }
 })
+
+if (auth.serveSocket) {
+  fs.rmSync(auth.serveSocket, { force: true })
+  const sock = http.createServer((req, res) => { req.door = 'socket'; app(req, res) })
+  sock.listen(auth.serveSocket, () => {
+    fs.chmodSync(auth.serveSocket, 0o600)
+    console.log(`[auth] dashboard on ${auth.serveSocket} for ${auth.allowedUsers.length} allowed login(s)`)
+    const hidden = unownedProfiles(readUsers())
+    if (hidden.length) {
+      console.warn(`[auth] profiles with no owners are hidden from everyone: ${hidden.join(', ')}. Add "owners": ["<login>"] to them in users.json.`)
+    }
+  })
+}
