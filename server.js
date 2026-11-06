@@ -11,6 +11,7 @@ import multer from 'multer'
 import Anthropic from '@anthropic-ai/sdk'
 import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUserDna, DATA_DIR } from './db.js'
 import { loadAuthConfig, gate, canSee, unownedProfiles, parseOwners } from './auth.js'
+import { parseTimeToHours, isNight, nightDate } from './sleep.js'
 
 // OCR of lab PDFs/PNGs/CSVs is the only feature that needs the Anthropic API.
 // Without a key the dashboard runs normally and the lab-file import answers 503.
@@ -310,14 +311,6 @@ app.delete('/api/:userId/body/:id', requireUser, (req, res) => {
 // ─────────────────────────────────────────────────────────────
 
 const SLEEP_METRICS = ['sleep_hours', 'sleep_quality', 'deep_sleep_hours', 'rem_sleep_hours', 'core_sleep_hours', 'awake_hours', 'bedtime', 'wake_time']
-
-// Parse "2026-07-08 23:10:31 -0600" → decimal hours (23.175)
-function parseTimeToHours(str) {
-  if (!str || typeof str !== 'string') return NaN
-  const m = str.match(/(\d{2}):(\d{2}):(\d{2})/)
-  if (!m) return NaN
-  return parseInt(m[1]) + parseInt(m[2]) / 60 + parseInt(m[3]) / 3600
-}
 
 // Ranges calibrated against Rythm Health's Optimal/Average/Out-of-Range classifications.
 // range_low/high = outer boundary (Average zone). optimal_low/high = inner target (Optimal zone).
@@ -845,14 +838,8 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
             if (new Date(p.end) > new Date(end)) end = p.end
           }
 
-          let ownerDate = null
-          if (!isNaN(startH) && startH >= 19) {
-            const d = new Date(start.slice(0, 10) + 'T00:00:00')
-            d.setDate(d.getDate() + 1)
-            ownerDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-          } else if (!isNaN(startH) && startH < 2) {
-            ownerDate = start.slice(0, 10)
-          }
+          // sleep.js decides whether this is a night and which day it belongs to.
+          const ownerDate = nightDate(start, end, totals.core + totals.deep + totals.rem + totals.asleep)
 
           console.log(new Date().toISOString(), '[sleep night]', JSON.stringify({
             ownerDate, source: src, start, end, startH, intervals: cluster.length, ...totals,
@@ -928,18 +915,20 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
       if (name === 'sleep_analysis' && data.some(p => 'totalSleep' in p)) {
         for (const point of data) {
           const startH = parseTimeToHours(point.sleepStart)
+          // Skip naps (the rule is in sleep.js). The point carries its own night's date, so
+          // one with an unreadable start is kept, as before.
+          const nap = !isNaN(startH) && !isNight(startH, parseFloat(point.totalSleep))
           console.log(new Date().toISOString(), '[sleep point]', JSON.stringify({
             source: point.source,
             date: point.date,
             sleepStart: point.sleepStart,
             sleepEnd: point.sleepEnd,
             parsedStartHour: startH,
-            verdict: isNaN(startH) ? 'unparseable→skip' : (startH >= 2 && startH < 19 ? 'NAP→skip' : 'night→keep'),
+            verdict: nap ? 'NAP→skip' : 'night→keep',
           }))
           const date = point.date?.slice(0, 10)
           if (!date) { stats.skipped++; continue }
-          // Skip naps — only process sessions starting between 7 PM and 2 AM
-          if (!isNaN(startH) && startH >= 2 && startH < 19) { stats.skipped++; continue }
+          if (nap) { stats.skipped++; continue }
           const src = point.source ?? 'apple_health'
           // Same as the raw-interval path: a night with no total sleep is not a night.
           if (!(parseFloat(point.totalSleep) > 0)) { stats.skipped++; continue }

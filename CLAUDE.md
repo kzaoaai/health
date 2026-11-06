@@ -15,7 +15,7 @@ npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 
 Vite proxies `/api` → `localhost:3001`, so work against `http://localhost:5173` in dev. In production Express serves `client/dist` and has an `app.get('*')` SPA fallback, so the whole app is on `:3001`.
 
-`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`). There is no linter. Beyond that, verification is `node --check server.js` / `node --check db.js` / `node --check auth.js` plus exercising endpoints with curl against a running dev server.
+`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js` and `sleep.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js` and `sleep.js` plus exercising endpoints with curl against a running dev server.
 
 `ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
 
@@ -64,8 +64,8 @@ Target of the Health Auto Export iPhone app. `HAE_METRIC_MAP` renames HAE metric
 
 Sleep has three separate code paths in the same handler, and this is the most fragile part of the codebase:
 
-- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then each cluster is assigned an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day, anything else is treated as a nap and skipped. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites.
-- **Compound nightly objects** (`totalSleep`/`deep`/`rem`/`core`, Summarize on) — nap filter only.
+- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then `nightDate()` in `sleep.js` assigns each cluster an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day; a cluster starting at any other hour is a night only with ≥ 3 h asleep (`MIN_NIGHT_SLEEP_HOURS`), filed under the day it ends, and a nap (skipped) otherwise. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites.
+- **Compound nightly objects** (`totalSleep`/`deep`/`rem`/`core`, Summarize on) — nap filter only (`isNight()` in `sleep.js`, same rule); the point's own `date` is the night.
 - Plain `qty` points for everything else.
 
 Workouts are aggregated per day into `workout_count`, `exercise_minutes` and `hr_z1_min`…`hr_z5_min`, using max HR = `220 - age` from the user's `birth_year` (auto-extracted from HAE's `date_of_birth` on first sync if unset).

@@ -36,6 +36,7 @@ jobs:
         node --check server.js
         node --check db.js
         node --check auth.js
+        node --check sleep.js
 
     - name: Install dependencies
       run: |

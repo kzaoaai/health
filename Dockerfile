@@ -28,7 +28,7 @@ COPY --from=builder /app/node_modules    ./node_modules
 COPY --from=builder /app/client/dist     ./client/dist
 
 # Copy source
-COPY server.js db.js auth.js package.json ./
+COPY server.js db.js auth.js sleep.js package.json ./
 COPY scripts                             ./scripts
 
 # Bake in seed/default data — copied into the volume on first run

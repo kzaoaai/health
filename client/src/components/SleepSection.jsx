@@ -27,8 +27,9 @@ const BEDTIME_RANGES = [
   { label: '1Y',  days: 365 },
 ]
 
-// 8 PM = chart zero; times earlier in the day shift forward past midnight
-const BASELINE = 20
+// 6 PM = chart zero; times earlier in the day shift forward past midnight, so evening
+// bedtimes from 6 PM and late or daytime ones up to the next 6 PM stay in order
+const BASELINE = 18
 function toChart(h) {
   if (h == null) return null
   return ((h - BASELINE + 24) % 24)
@@ -256,21 +257,34 @@ export default function SleepSection({ data }) {
     return days
   }, [withHours, historyCount, todayStr, currentHour])
 
-  // Fixed 3-hour scale: 9 PM (toChart(21)=1) to 12 AM (toChart(0)=4) — bedtimes after
-  // midnight are clamped to the 12 AM line rather than stretching the axis for one outlier.
-  const BT_MIN = 1    // 9 PM
-  const BT_MAX = toChart(0)  // 12 AM
+  // The scale runs from 9 PM to at least 12 AM. When bedtimes are routinely later it
+  // stretches to the 90th-percentile bedtime, so someone who sleeps at 4 AM sees their
+  // nights, while a single outlier is still clamped to the top line rather than
+  // stretching the axis.
+  const BT_MIN = toChart(21)    // 9 PM
+  const BT_FLOOR = toChart(0)   // 12 AM
 
   const bedtimeDays = BEDTIME_RANGES.find(r => r.label === bedtimeRange)?.days ?? 30
-  const bedtimeData = useMemo(() => {
+  const { bedtimeData, btMax, btTicks } = useMemo(() => {
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - bedtimeDays)
     const cutoffStr = cutoff.toISOString().slice(0, 10)
-    return withHours
-      .filter(e => e.date >= cutoffStr && e.bedtime != null)
-      .map(e => ({ date: e.date, bedtime: Math.min(toChart(e.bedtime), BT_MAX), bedtime_raw: e.bedtime }))
-      .reverse()
-  }, [withHours, bedtimeDays, BT_MAX])
+    const rows = withHours.filter(e => e.date >= cutoffStr && e.bedtime != null)
+    const sorted = rows.map(e => toChart(e.bedtime)).sort((a, b) => a - b)
+    const p90 = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.9)] : BT_FLOOR
+    const span = Math.max(BT_FLOOR, Math.ceil(p90)) - BT_MIN
+    const step = span > 12 ? 3 : span > 6 ? 2 : 1
+    const max = BT_MIN + Math.ceil(span / step) * step
+    const ticks = []
+    for (let v = BT_MIN; v <= max; v += step) ticks.push(v)
+    return {
+      bedtimeData: rows
+        .map(e => ({ date: e.date, bedtime: Math.min(toChart(e.bedtime), max), bedtime_raw: e.bedtime }))
+        .reverse(),
+      btMax: max,
+      btTicks: ticks,
+    }
+  }, [withHours, bedtimeDays, BT_MIN, BT_FLOOR])
 
   return (
     <section id="sleep" className="mb-16">
@@ -445,8 +459,8 @@ export default function SleepSection({ data }) {
                     axisLine={false} tickLine={false} interval="preserveStartEnd"
                   />
                   <YAxis
-                    domain={[BT_MIN, BT_MAX]}
-                    ticks={[toChart(21), toChart(22), toChart(23), toChart(0)]}
+                    domain={[BT_MIN, btMax]}
+                    ticks={btTicks}
                     tick={{ fill: '#475569', fontSize: 10 }}
                     axisLine={false} tickLine={false}
                     tickFormatter={chartToLabel}
@@ -462,10 +476,9 @@ export default function SleepSection({ data }) {
                     stroke="none"
                     strokeWidth={0}
                     dot={(props) => {
-                      const v = props.payload?.bedtime_raw
-                      // Normalize: times past midnight (0–12h) add 24 so 12:35 AM = 24.58, not 0.58
-                      const norm = v == null ? null : (v < 12 ? v + 24 : v)
-                      const color = norm == null ? '#374d6c' : norm <= 22.5 ? '#34d399' : norm >= 23.5 ? '#f87171' : '#f59e0b'
+                      // On the chart's own scale, so a 1 PM bedtime reads as late, not early
+                      const c = toChart(props.payload?.bedtime_raw)
+                      const color = c == null ? '#374d6c' : c <= toChart(22.5) ? '#34d399' : c >= toChart(23.5) ? '#f87171' : '#f59e0b'
                       return <circle key={props.key} cx={props.cx} cy={props.cy} r={5} fill={color} stroke="#0d1520" strokeWidth={1.5} />
                     }}
                     activeDot={{ r: 7 }}
