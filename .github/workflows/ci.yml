@@ -37,6 +37,7 @@ jobs:
         node --check db.js
         node --check auth.js
         node --check sleep.js
+        node --check fhir.js
 
     - name: Install dependencies
       run: |

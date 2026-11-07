@@ -54,6 +54,18 @@ export const api = {
   confirmLabsImport: (userId, data) =>
     req(`/${userId}/import/labs-confirm`, { method: 'POST', body: JSON.stringify(data) }),
 
+  // Throws the server's own message (e.g. "No numeric lab results found…") rather than req's raw body.
+  importHealthRecords: async (userId, resources) => {
+    const res = await fetch(`/api/${userId}/import/health-records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resources }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error ?? `API error ${res.status}`)
+    return body
+  },
+
   // ── Protocols ─────────────────────────────────────────────
   getProtocols:      (userId)           => req(`/${userId}/protocols`),
   addProtocol:       (userId, data)     => req(`/${userId}/protocols`, { method: 'POST', body: JSON.stringify(data) }),

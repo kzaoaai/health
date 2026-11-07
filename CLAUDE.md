@@ -15,7 +15,7 @@ npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 
 Vite proxies `/api` → `localhost:3001`, so work against `http://localhost:5173` in dev. In production Express serves `client/dist` and has an `app.get('*')` SPA fallback, so the whole app is on `:3001`.
 
-`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js` and `sleep.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js` and `sleep.js` plus exercising endpoints with curl against a running dev server.
+`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`, `sleep.js` and `fhir.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js`, `sleep.js` and `fhir.js` plus exercising endpoints with curl against a running dev server.
 
 `ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
 
@@ -52,6 +52,8 @@ Schema evolution in `getDb()`: new **tables/indexes** go in the `SCHEMA` string 
 1. `POST /import/labs-pdf` — sha256 the upload (duplicate → 409), store it at `DATA_DIR/pdfs/<hash><ext>`, send it to Claude as a `document`/`image`/text block with `LAB_SYSTEM_PROMPT`, and return the parsed JSON **without touching the DB**.
 2. Client shows a preview so the user can review/toggle values — this lives inline in `ImportSection.jsx`; `components/OcrPreviewModal.jsx` is dead code (nothing imports it, and its `onConfirm` drops `file_hash`/`filename`).
 3. `POST /import/labs-confirm` inserts the `lab_reports` row first, then stamps its id onto every `metrics` row it writes via `lab_report_id`.
+
+Health records are the exception: `POST /import/health-records` takes FHIR resources (the client's `healthRecords.js` pulls them out of the Health app's export zip with `File.slice` and `DecompressionStream`, no zip library) and writes straight away with `source = 'health_records'`, because the data is structured. `fhir.js` keeps numeric laboratory Observations only and maps known LOINC codes onto `BLOOD_MARKERS` keys (`MARKER_BY_LOINC`); other tests get a name made from their label. It writes no `lab_reports` row, so there is no per-import undo; re-importing is an idempotent upsert.
 
 That stamp is what makes `DELETE /lab-reports/:id` able to cleanly undo a bad import (it also has a legacy fallback matching on date + marker name for rows written before the column existed). The OCR model id comes from `OCR_MODEL`.
 

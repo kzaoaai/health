@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUserDna, DATA_DIR } from './db.js'
 import { loadAuthConfig, gate, canSee, unownedProfiles, parseOwners } from './auth.js'
 import { parseTimeToHours, isNight, nightDate } from './sleep.js'
+import { labResultsFrom } from './fhir.js'
 
 // OCR of lab PDFs/PNGs/CSVs is the only feature that needs the Anthropic API.
 // Without a key the dashboard runs normally and the lab-file import answers 503.
@@ -1632,6 +1633,62 @@ app.post('/api/:userId/import/labs-confirm', requireUser, (req, res) => {
     console.error('[labs-confirm] DB write error:', err)
     res.status(500).json({ error: `Database write failed: ${err.message}` })
   }
+})
+
+// ─────────────────────────────────────────────────────────────
+// Health records import  POST /api/:userId/import/health-records
+//
+// Lab results a health provider shared with the Health app, as FHIR resources: the client
+// pulls them out of the Health app's export zip (or loose .json files) and posts them as
+// { resources: [...] }. fhir.js picks out the numeric lab results. They are structured
+// data, so unlike the PDF import there is no OCR, no preview step and no stored file.
+// Writes are upserts on (date, metric, source), so importing a newer export again only
+// adds what is new.
+// ─────────────────────────────────────────────────────────────
+
+const HEALTH_RECORDS_SOURCE = 'health_records'
+
+app.post('/api/:userId/import/health-records', requireUser, (req, res) => {
+  const input = req.body?.resources ?? req.body
+  const { results, skipped } = labResultsFrom(input)
+  if (!results.length) {
+    return res.status(422).json({ error: 'No numeric lab results found in these records', skipped })
+  }
+
+  const db = getDb(req.params.userId)
+  const upsert = db.prepare(`
+    INSERT INTO metrics (date, metric, value, source)
+    VALUES (@date, @metric, @value, @source)
+    ON CONFLICT(date, metric, source) DO UPDATE SET value = excluded.value
+  `)
+  // Same rule as labs-confirm: a lab's printed range may set range_low/high, never the
+  // optimal zone. Results are date-ascending, so each marker ends on its newest range.
+  const rangeUpsert = db.prepare(`
+    INSERT INTO marker_configs (metric, unit, range_low, range_high, source, updated_at)
+    VALUES (@metric, @unit, @range_low, @range_high, '${HEALTH_RECORDS_SOURCE}', datetime('now'))
+    ON CONFLICT(metric) DO UPDATE SET
+      unit       = COALESCE(marker_configs.unit, excluded.unit),
+      range_low  = COALESCE(excluded.range_low,  marker_configs.range_low),
+      range_high = COALESCE(excluded.range_high, marker_configs.range_high),
+      source     = excluded.source,
+      updated_at = excluded.updated_at
+  `)
+
+  let ranges = 0
+  db.transaction(() => {
+    for (const r of results) {
+      upsert.run({ date: r.date, metric: r.metric, value: r.value, source: HEALTH_RECORDS_SOURCE })
+      if (r.low != null || r.high != null) {
+        rangeUpsert.run({ metric: r.metric, unit: r.unit, range_low: r.low, range_high: r.high })
+        ranges++
+      }
+    }
+  })()
+
+  const tests = new Set(results.map(r => r.metric)).size
+  const dates = [...new Set(results.map(r => r.date))].sort()
+  console.log(`[health-records] ${results.length} values, ${tests} tests, ${dates.length} dates for ${req.params.userId}; skipped ${JSON.stringify(skipped)}`)
+  res.json({ ok: true, imported: results.length, tests, dates: dates.length, first: dates[0], last: dates.at(-1), ranges, skipped })
 })
 
 // ─────────────────────────────────────────────────────────────

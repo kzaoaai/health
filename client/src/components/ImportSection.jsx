@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { api } from '../api'
+import { readHealthRecords, isHealthRecordsFile } from '../healthRecords'
 
 const UNITS = {
   weight: 'lbs', skeletal_muscle_mass: 'lbs', body_fat_mass: 'lbs', lean_mass: 'lbs',
@@ -96,6 +97,8 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
   const [fileHash, setFileHash] = useState(null)
   const [storedFilename, setStoredFilename] = useState(null)
   const [reportsOpen, setReportsOpen] = useState(false)
+  const [busyLabel, setBusyLabel] = useState('Reading with AI…')
+  const [recordsResult, setRecordsResult] = useState(null)
   const fileInputRef = useRef(null)
 
   function resetToIdle() {
@@ -106,6 +109,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
     setError(null)
     setFileHash(null)
     setStoredFilename(null)
+    setRecordsResult(null)
   }
 
   async function processFile(file) {
@@ -115,6 +119,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
     }
     setError(null)
     setFileName(file.name)
+    setBusyLabel('Reading with AI…')
     setPhase('uploading')
     try {
       const result = await api.importLabsPdf(userId, file)
@@ -132,17 +137,46 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
     }
   }
 
+  // Health records: the Health app's export zip, or .json files from its clinical-records
+  // folder. Structured data, so they are imported straight away with no preview step.
+  async function processHealthRecords(files) {
+    setError(null)
+    setFileName(files.length === 1 ? files[0].name : `${files.length} files`)
+    setBusyLabel('Reading health records…')
+    setPhase('uploading')
+    try {
+      const { resources, unreadable } = await readHealthRecords(files)
+      if (!resources.length) {
+        throw new Error("No health records found. Upload the Health app's export zip, or the .json files from its clinical-records folder.")
+      }
+      const result = await api.importHealthRecords(userId, resources)
+      setRecordsResult({ ...result, unreadable })
+      setPhase('records')
+      onRefresh?.()
+    } catch (err) {
+      setError(err.message)
+      setPhase('idle')
+    }
+  }
+
+  function handleFiles(list) {
+    const files = [...(list ?? [])]
+    if (!files.length) return
+    const records = files.filter(isHealthRecordsFile)
+    if (records.length) processHealthRecords(records)
+    else processFile(files[0])
+  }
+
   function handleFileInput(e) {
-    const file = e.target.files?.[0]
+    const files = [...(e.target.files ?? [])]
     e.target.value = ''
-    if (file) processFile(file)
+    handleFiles(files)
   }
 
   function handleDrop(e) {
     e.preventDefault()
     setDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) processFile(file)
+    handleFiles(e.dataTransfer.files)
   }
 
   async function handleDeleteReport(id) {
@@ -201,15 +235,15 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
               : 'border-[#243450] bg-[#131d2e] hover:border-[#374d6c] hover:bg-[#111827]'
             }`}
         >
-          <input ref={fileInputRef} type="file" accept=".pdf,.PDF,.csv,.CSV,.png,.PNG" className="hidden" onChange={handleFileInput} />
+          <input ref={fileInputRef} type="file" multiple accept=".pdf,.PDF,.csv,.CSV,.png,.PNG,.zip,.ZIP,.json,.JSON" className="hidden" onChange={handleFileInput} />
           <div className="w-12 h-12 rounded-xl bg-[#243450] flex items-center justify-center">
             <svg className="w-6 h-6 text-[#475569]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
           <div className="text-center">
-            <p className="text-[#94a3b8] text-sm font-medium">Drop a PDF or CSV here or click to browse</p>
-            <p className="text-[#374d6c] text-xs mt-1">InBody scans · Blood panels · Lab reports · Screenshots</p>
+            <p className="text-[#94a3b8] text-sm font-medium">Drop a file here or click to browse</p>
+            <p className="text-[#374d6c] text-xs mt-1">InBody scans · Blood panels · Lab reports · Screenshots · Health app export (.zip)</p>
           </div>
         </div>
       )}
@@ -222,7 +256,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
           <div className="text-center">
-            <p className="text-[#94a3b8] text-sm font-medium">Reading with AI…</p>
+            <p className="text-[#94a3b8] text-sm font-medium">{busyLabel}</p>
             {fileName && <p className="text-[#374d6c] text-xs mt-1">{fileName}</p>}
           </div>
         </div>
@@ -314,6 +348,30 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
             onClick={resetToIdle}
             className="text-xs text-emerald-600 hover:text-emerald-400 transition-colors mt-1"
           >
+            Import another
+          </button>
+        </div>
+      )}
+
+      {/* Health records imported */}
+      {phase === 'records' && recordsResult && (
+        <div className="rounded-2xl border border-emerald-800 bg-emerald-950 flex flex-col items-center justify-center py-16 px-6 gap-3 text-center">
+          <p className="text-emerald-300 text-sm font-medium">
+            {recordsResult.imported} lab result{recordsResult.imported !== 1 ? 's' : ''} imported from health records
+          </p>
+          <p className="text-emerald-500 text-xs">
+            {recordsResult.tests} test{recordsResult.tests !== 1 ? 's' : ''} on {recordsResult.dates} date{recordsResult.dates !== 1 ? 's' : ''}
+            {recordsResult.first ? `, ${recordsResult.first} to ${recordsResult.last}` : ''}
+          </p>
+          {(recordsResult.skipped?.notNumeric > 0 || recordsResult.unreadable > 0) && (
+            <p className="text-emerald-600 text-xs max-w-md">
+              {recordsResult.skipped?.notNumeric > 0 && (recordsResult.skipped.notNumeric === 1
+                ? '1 written result (such as "negative") is not charted. '
+                : `${recordsResult.skipped.notNumeric} written results (such as "negative") are not charted. `)}
+              {recordsResult.unreadable > 0 && `${recordsResult.unreadable} file${recordsResult.unreadable !== 1 ? 's' : ''} could not be read.`}
+            </p>
+          )}
+          <button onClick={resetToIdle} className="text-xs text-emerald-600 hover:text-emerald-400 transition-colors mt-1">
             Import another
           </button>
         </div>

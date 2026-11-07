@@ -157,6 +157,10 @@ You can import from CSV, PNG or PDF
 
 Just drop the PDF/PNG/CSV into the 'import' page, AI will OCR then import values. 
 
+**Health records (no AI needed)**
+
+If a health provider shares your records with the iPhone Health app, export them from Health → your profile picture → **Export All Health Data**, then drop the resulting `export.zip` onto the Import page. Only the lab results in its `clinical-records` folder are read (the rest of the zip, mostly `export.xml`, is never loaded), and only numeric ones are imported: they appear in Labs, under the dashboard's own marker names where the LOINC code is known. Loose `.json` files from that folder work too. Importing a newer export again only adds what is new.
+
 ## Related
 
 https://github.com/nixfred/apple-health-dashboard

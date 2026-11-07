@@ -169,7 +169,7 @@ function LabTableRow({ markerKey, markers, entries }) {
   )
 }
 
-const SOURCE_LABEL = { apple_health: 'Apple Health', manual: 'Manual' }
+const SOURCE_LABEL = { apple_health: 'Apple Health', health_records: 'Health Records', manual: 'Manual' }
 
 function sourceLabel(source, date, reports) {
   if (source === 'pdf_import') {
