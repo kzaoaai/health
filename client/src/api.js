@@ -35,6 +35,7 @@ export const api = {
 
   // ── Heart Rate ────────────────────────────────────────────
   getHeartRate: (userId)    => req(`/${userId}/heartrate`),
+  getAppleHealth: (userId)  => req(`/${userId}/apple-health`),
 
   // ── Events ────────────────────────────────────────────────
   getEvents:    (userId)     => req(`/${userId}/events`),

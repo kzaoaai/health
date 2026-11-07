@@ -400,16 +400,34 @@ const BLOOD_MARKERS = {
   microplastics_under_10_um: { unit: '', range_low: 4, range_high: 12, optimal_low: 0, optimal_high: 3 },
 }
 
+// Every metric one of the dedicated sections reads. GET /blood is their complement.
+const SECTION_METRICS = [...BODY_METRICS, ...SLEEP_METRICS, ...EXERCISE_METRICS, ...HEARTRATE_METRICS]
+
+// Rows the Apple Health importer writes carry this source.
+const APPLE_HEALTH_SOURCE = 'apple_health'
+
+// Lab markers: the built-in list plus any a lab import configured. An Apple Health row
+// for one of these (say, a glucose reading) still belongs in Labs; any other Apple Health
+// row belongs in GET /apple-health.
+function labMarkerNames(db) {
+  const configured = db.prepare('SELECT metric FROM marker_configs').all().map(r => r.metric)
+  return [...new Set([...Object.keys(BLOOD_MARKERS), ...configured])]
+}
+
 app.get('/api/:userId/blood', requireUser, (req, res) => {
   const db = getDb(req.params.userId)
-  const exclude = [...BODY_METRICS, ...SLEEP_METRICS, ...EXERCISE_METRICS, ...HEARTRATE_METRICS]
+  const exclude = SECTION_METRICS
   const placeholders = exclude.map(() => '?').join(',')
+  const labMarkers = labMarkerNames(db)
+  // Without the source clause, every metric Health Auto Export sends that no section reads
+  // (steps, calories, walking speed, audio exposure…) showed up here as a lab result.
   const rows = db.prepare(`
     SELECT id, date, metric, value, source, notes, created_at
     FROM metrics
     WHERE metric NOT IN (${placeholders})
+      AND NOT (source = ? AND metric NOT IN (${labMarkers.map(() => '?').join(',')}))
     ORDER BY date ASC, id ASC
-  `).all(...exclude)
+  `).all(...exclude, APPLE_HEALTH_SOURCE, ...labMarkers)
 
   // Start with hardcoded fallbacks, then overlay lab-sourced range_low/high from DB.
   // optimal_low/high always come from hardcoded values (tighter than lab normal range).
@@ -1179,6 +1197,26 @@ app.get('/api/:userId/heartrate', requireUser, (req, res) => {
     WHERE metric IN (${placeholders})
     ORDER BY date ASC, id ASC
   `).all(...HEARTRATE_METRICS)
+
+  res.json({ entries: pivotMetrics(rows) })
+})
+
+// ─────────────────────────────────────────────────────────────
+// Apple Health  (every Apple Health metric no other section reads)
+//
+// The importer stores whatever Health Auto Export sends, so this is open-ended: steps,
+// calories, walking metrics, VO2 max, audio exposure and so on, one daily value each.
+// ─────────────────────────────────────────────────────────────
+
+app.get('/api/:userId/apple-health', requireUser, (req, res) => {
+  const db = getDb(req.params.userId)
+  const exclude = [...SECTION_METRICS, ...labMarkerNames(db)]
+  const rows = db.prepare(`
+    SELECT id, date, metric, value, source, notes, created_at
+    FROM metrics
+    WHERE source = ? AND metric NOT IN (${exclude.map(() => '?').join(',')})
+    ORDER BY date ASC, id ASC
+  `).all(APPLE_HEALTH_SOURCE, ...exclude)
 
   res.json({ entries: pivotMetrics(rows) })
 })

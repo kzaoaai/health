@@ -6,6 +6,7 @@ import BodySection from './components/BodySection'
 import SleepSection from './components/SleepSection'
 import ExerciseSection from './components/ExerciseSection'
 import HeartRateSection from './components/HeartRateSection'
+import AppleHealthSection from './components/AppleHealthSection'
 import LabsSection from './components/LabsSection'
 import DnaSection from './components/DnaSection'
 import EventsSection from './components/EventsSection'
@@ -14,7 +15,7 @@ import ProtocolsSection from './components/ProtocolsSection'
 import SettingsSection from './components/SettingsSection'
 import ExportModal from './components/ExportModal'
 
-const NAV_IDS = ['body', 'sleep', 'exercise', 'heartrate', 'labs', 'dna', 'events', 'protocols', 'import']
+const NAV_IDS = ['body', 'sleep', 'exercise', 'heartrate', 'applehealth', 'labs', 'dna', 'events', 'protocols', 'import']
 
 function useHiddenSections(userId) {
   const storageKey = userId ? `health_hidden_sections_${userId}` : null
@@ -142,6 +143,7 @@ function Dashboard() {
   const [sleepData,     setSleepData]     = useState(null)
   const [exerciseData,  setExerciseData]  = useState(null)
   const [heartrateData, setHeartrateData] = useState(null)
+  const [appleHealthData, setAppleHealthData] = useState(null)
   const [bloodData,     setBloodData]     = useState(null)
   const [labReports,    setLabReports]    = useState(null)
   const [dnaData,       setDnaData]       = useState(null)
@@ -158,11 +160,12 @@ function Dashboard() {
       // the finally, so `loading` stayed true forever and the dashboard was
       // stuck on the skeleton with no error and no way forward.
       if (!currentUserId) return
-      const [body, sleep, exercise, heartrate, blood, events, reports, protocols, dna] = await Promise.all([
+      const [body, sleep, exercise, heartrate, appleHealth, blood, events, reports, protocols, dna] = await Promise.all([
         api.getBody(currentUserId),
         api.getSleep(currentUserId),
         api.getExercise(currentUserId),
         api.getHeartRate(currentUserId),
+        api.getAppleHealth(currentUserId),
         api.getBlood(currentUserId),
         api.getEvents(currentUserId),
         api.getLabReports(currentUserId),
@@ -173,6 +176,7 @@ function Dashboard() {
       setSleepData(sleep)
       setExerciseData(exercise)
       setHeartrateData(heartrate)
+      setAppleHealthData(appleHealth)
       setBloodData(blood)
       setEventsData(events)
       setLabReports(reports)
@@ -191,6 +195,7 @@ function Dashboard() {
     setSleepData(null)
     setExerciseData(null)
     setHeartrateData(null)
+    setAppleHealthData(null)
     setBloodData(null)
     setEventsData(null)
     setLabReports(null)
@@ -357,6 +362,7 @@ function Dashboard() {
             {!hiddenSections.has('sleep')     && <div className={printSections && !printSections.sleep     ? 'print-exclude' : ''}><SleepSection     data={sleepData} /></div>}
             {!hiddenSections.has('exercise')  && <div className={printSections && !printSections.exercise  ? 'print-exclude' : ''}><ExerciseSection  data={exerciseData}  userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('heartrate') && <div className={printSections && !printSections.heartrate ? 'print-exclude' : ''}><HeartRateSection data={heartrateData} /></div>}
+            {!hiddenSections.has('applehealth') && <div className={printSections && !printSections.applehealth ? 'print-exclude' : ''}><AppleHealthSection data={appleHealthData} /></div>}
             {!hiddenSections.has('labs')      && <div className={printSections && !printSections.labs      ? 'print-exclude' : ''}><LabsSection      data={bloodData}     reports={labReports?.reports ?? []} userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('dna')       && <div className={printSections && !printSections.dna       ? 'print-exclude' : ''}><DnaSection       data={dnaData}       userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('events')    && <div className={printSections && !printSections.events    ? 'print-exclude' : ''}><EventsSection    data={eventsData}    userId={currentUserId} onRefresh={loadAll} /></div>}

@@ -30,9 +30,10 @@ Express API (`server.js`, single file, ~1370 lines) + `db.js` for SQLite + a Vit
 The per-section endpoints are just filters over that one table, driven by constants near the top of `server.js`:
 
 - `BODY_METRICS`, `SLEEP_METRICS`, `EXERCISE_METRICS`, `HEARTRATE_METRICS` are **include** lists.
-- `GET /api/:userId/blood` is the **complement** — every metric *not* in those four lists.
+- `GET /api/:userId/blood` is the **complement** — every metric *not* in those four lists (`SECTION_METRICS`), minus Apple Health rows (`source = 'apple_health'`) whose metric is not a lab marker (`BLOOD_MARKERS` or `marker_configs`, see `labMarkerNames()`).
+- `GET /api/:userId/apple-health` returns exactly those Apple Health rows: steps, calories, walking metrics, VO2 max and whatever else Health Auto Export sends that no section reads. The client's `AppleHealthSection` gives each one a small card.
 
-Consequence: a new body/sleep/exercise/HR metric that isn't added to its section constant will silently surface under Labs instead.
+Consequence: a new body/sleep/exercise/HR metric that isn't added to its section constant will silently surface under Labs instead, or under Apple Health if it came from Health Auto Export.
 
 `pivotMetrics()` flattens rows into one object per date. When several sources wrote the same metric on the same date, the highest `id` wins — which is why `GET /sleep` re-derives `bedtime` (earliest) and `wake_time` (latest) across sources afterwards instead of trusting the pivot.
 
