@@ -15,9 +15,9 @@ npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 
 Vite proxies `/api` → `localhost:3001`, so work against `http://localhost:5173` in dev. In production Express serves `client/dist` and has an `app.get('*')` SPA fallback, so the whole app is on `:3001`.
 
-`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`, `sleep.js` and `fhir.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js`, `sleep.js` and `fhir.js` plus exercising endpoints with curl against a running dev server.
+`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`, `sleep.js`, `fhir.js` and `units.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js`, `sleep.js`, `fhir.js` and `units.js` plus exercising endpoints with curl against a running dev server.
 
-`ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
+`ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `ANTHROPIC_API_KEY_FILE` names a file holding the key instead (a Docker secret, say) and wins when both are set; an unreadable file leaves OCR off and logs why. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
 
 ## Architecture
 
@@ -49,9 +49,11 @@ Schema evolution in `getDb()`: new **tables/indexes** go in the `SCHEMA` string 
 
 ### Lab/InBody import is two-phase, by design
 
-1. `POST /import/labs-pdf` — sha256 the upload (duplicate → 409), store it at `DATA_DIR/pdfs/<hash><ext>`, send it to Claude as a `document`/`image`/text block with `LAB_SYSTEM_PROMPT`, and return the parsed JSON **without touching the DB**.
-2. Client shows a preview so the user can review/toggle values — this lives inline in `ImportSection.jsx`; `components/OcrPreviewModal.jsx` is dead code (nothing imports it, and its `onConfirm` drops `file_hash`/`filename`).
-3. `POST /import/labs-confirm` inserts the `lab_reports` row first, then stamps its id onto every `metrics` row it writes via `lab_report_id`.
+1. `POST /import/labs-pdf` — sha256 the upload (duplicate → 409), store it at `DATA_DIR/pdfs/<hash><ext>`, send it to Claude as a `document`/`image`/text block with `LAB_SYSTEM_PROMPT`, convert every value to its marker's unit (`units.js`, below), and return the result **without touching the DB**.
+2. Client shows a preview so the user can review/toggle values, with each converted value's printed one under it and anything that could not be converted left unticked — this lives inline in `ImportSection.jsx`; `components/OcrPreviewModal.jsx` is dead code (nothing imports it, and its `onConfirm` drops `file_hash`/`filename`).
+3. `POST /import/labs-confirm` inserts the `lab_reports` row first, then stamps its id onto every `metrics` row it writes via `lab_report_id`. A marker with no unit yet gets the one its values arrived in (`marker_configs.unit`, never replacing a unit already set).
+
+**Units.** Labs print their own units (g/L, mmol/L, mg/dL), and each marker is kept in one: its `marker_configs.unit`, else `BLOOD_MARKERS`' (`markerUnitFor()`). The prompt asks for values exactly as printed plus a `units` object, and `convertReport()` in `units.js` converts value and range together: by powers of ten within a family (mass, molar, cell counts, enzyme units, …), and between mass and molar units through `MOLAR_MASS`. Urea is turned into BUN (its nitrogen share). It returns `conversions[metric].status`: `same`, `converted`, `new` (no unit yet: kept as printed), or `unknown`/`no_unit`, which the review leaves unticked; ticked anyway, the value is taken as being in the marker's unit. InBody scans are not converted (the prompt already asks for lbs). The OCR result is logged as counts only, since container logs are kept. The prompt is also given the profile's marker names, so a test lands on its existing name (`co2` rather than `bicarbonate`).
 
 Health records are the exception: `POST /import/health-records` takes FHIR resources (the client's `healthRecords.js` pulls them out of the Health app's export zip with `File.slice` and `DecompressionStream`, no zip library) and writes straight away with `source = 'health_records'`, because the data is structured. `fhir.js` keeps numeric laboratory Observations only and maps known LOINC codes onto `BLOOD_MARKERS` keys (`MARKER_BY_LOINC`); other tests get a name made from their label. It writes no `lab_reports` row, so there is no per-import undo; re-importing is an idempotent upsert.
 

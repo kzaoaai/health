@@ -13,13 +13,27 @@ import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUs
 import { loadAuthConfig, gate, canSee, unownedProfiles, parseOwners } from './auth.js'
 import { parseTimeToHours, isNight, nightDate } from './sleep.js'
 import { labResultsFrom } from './fhir.js'
+import { convertReport } from './units.js'
 
 // OCR of lab PDFs/PNGs/CSVs is the only feature that needs the Anthropic API.
 // Without a key the dashboard runs normally and the lab-file import answers 503.
-const OCR_ENABLED = Boolean(process.env.ANTHROPIC_API_KEY) && process.env.ANTHROPIC_API_KEY !== 'your_api_key_here'
-const anthropic = OCR_ENABLED ? new Anthropic() : null  // reads ANTHROPIC_API_KEY from env
+// The key comes from the file ANTHROPIC_API_KEY_FILE names (a Docker secret, say, so the
+// key is not in the container's environment), else from ANTHROPIC_API_KEY.
+function anthropicKey() {
+  const file = process.env.ANTHROPIC_API_KEY_FILE
+  if (file) {
+    try { return fs.readFileSync(file, 'utf8').trim() } catch (err) {
+      console.error(`[ocr] cannot read ANTHROPIC_API_KEY_FILE (${file}): ${err.code ?? err.message}`)
+      return ''
+    }
+  }
+  return process.env.ANTHROPIC_API_KEY ?? ''
+}
+const ANTHROPIC_KEY = anthropicKey()
+const OCR_ENABLED = Boolean(ANTHROPIC_KEY) && ANTHROPIC_KEY !== 'your_api_key_here'
+const anthropic = OCR_ENABLED ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null
 const OCR_MODEL = process.env.OCR_MODEL || 'claude-opus-5'
-if (!OCR_ENABLED) console.warn('[ocr] ANTHROPIC_API_KEY is not set: lab file import (OCR) is off, everything else works')
+if (!OCR_ENABLED) console.warn('[ocr] no Anthropic API key (ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE): lab file import (OCR) is off, everything else works')
 
 let auth
 try {
@@ -413,6 +427,16 @@ const APPLE_HEALTH_SOURCE = 'apple_health'
 function labMarkerNames(db) {
   const configured = db.prepare('SELECT metric FROM marker_configs').all().map(r => r.metric)
   return [...new Set([...Object.keys(BLOOD_MARKERS), ...configured])]
+}
+
+// The unit each lab marker is kept in: its marker_configs unit (what GET /blood shows),
+// else the built-in one, else null for a marker with no unit yet.
+function markerUnitFor(db) {
+  const configured = new Map(
+    db.prepare(`SELECT metric, unit FROM marker_configs WHERE unit IS NOT NULL AND unit != ''`).all()
+      .map(r => [r.metric, r.unit]),
+  )
+  return metric => configured.get(metric) ?? BLOOD_MARKERS[metric]?.unit ?? null
 }
 
 app.get('/api/:userId/blood', requireUser, (req, res) => {
@@ -1239,6 +1263,7 @@ Return ONLY valid JSON — no markdown, no explanation — in this exact shape:
   "date": "YYYY-MM-DD",
   "source_type": "inbody" | "blood_panel" | "other",
   "metrics": { "metric_name": numeric_value },
+  "units": { "metric_name": "unit as printed" },
   "reference_ranges": {
     "metric_name": { "low": number_or_null, "high": number_or_null }
   }
@@ -1249,7 +1274,15 @@ General rules:
 - All metric values must be plain numbers (no units, no strings, no ranges).
 - Use the result/measured value only for metrics.
 - Omit any marker you are not confident about.
-- Use lowercase snake_case for all metric names.
+- Use lowercase snake_case for all metric names, in English (e.g. "Neutrophiles" → neutrophils, "SGPT (ALT)" → alt).
+
+units rules (lab reports; InBody scans follow their own section below):
+- Give every value exactly as printed, in the unit printed next to it. NEVER convert a value to another unit: the server converts.
+- units: the unit printed for each value, copied as written ("g/L", "mg/dL", "mmol/L", "%", "U/L"). Use "" when the value has no unit (a ratio, say).
+- When a power of ten is printed in the test's name or beside the unit (e.g. "WBC x10 3" with "/mm3"), include it in the unit: "x10^3/mm3".
+- Reference ranges are in the same unit as their value, as printed.
+- Urea and BUN (blood urea nitrogen) are different tests: report urea as urea and BUN as bun.
+- In a white-cell differential, neutrophils, lymphocytes, monocytes, eosinophils and basophils are the percentages; an absolute count of one gets "_absolute" appended (neutrophils_absolute).
 
 reference_ranges rules:
 - Search the ENTIRE document for reference ranges — they may appear in a separate column, on the next line, in a footer, or in a section labeled "Reference Range", "Normal", "Optimal", "Ref Range", "Standard", etc.
@@ -1276,6 +1309,7 @@ Blood / lab panels (Rythm Health, Quest, LabCorp, etc.):
   sodium, potassium, chloride, bicarbonate, bun, creatinine, egfr,
   calcium, magnesium, phosphorus, uric_acid, alt, ast, ggt, alkaline_phosphatase,
   total_bilirubin, total_protein, albumin, globulin
+- When the request lists marker names already in use, a test that is one of them takes that exact name (say, "co2" for bicarbonate if co2 is listed).
 
 InBody body-composition scans:
 - source_type = "inbody"
@@ -1500,16 +1534,19 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
   // ── 1. Send file to Claude ────────────────────────────────
   let parsed
   try {
+    // The profile's own marker names, so a test lines up with its history ("co2", say,
+    // where a lab prints "bicarbonate").
+    const inUse = `Marker names already in use: ${labMarkerNames(db0).sort().join(', ')}.`
     const userContent = isCsv
-      ? [{ type: 'text', text: `Extract all health metrics from this CSV health report and return only the JSON.\n\n${req.file.buffer.toString('utf8')}` }]
+      ? [{ type: 'text', text: `Extract all health metrics from this CSV health report and return only the JSON. ${inUse}\n\n${req.file.buffer.toString('utf8')}` }]
       : isPng
         ? [
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: req.file.buffer.toString('base64') } },
-          { type: 'text', text: 'Extract all health metrics from this health report image and return only the JSON.' },
+          { type: 'text', text: `Extract all health metrics from this health report image and return only the JSON. ${inUse}` },
         ]
         : [
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: req.file.buffer.toString('base64') } },
-          { type: 'text', text: 'Extract all health metrics from this health report and return only the JSON.' },
+          { type: 'text', text: `Extract all health metrics from this health report and return only the JSON. ${inUse}` },
         ]
 
     const msg = await anthropic.messages.create({
@@ -1551,9 +1588,15 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
     return res.status(500).json({ error: `AI parsing failed: ${err.message}` })
   }
 
-  // ── Phase 1: debug — print result, skip DB write ─────────
-  console.log('[labs-pdf] Claude OCR result:')
-  console.log(JSON.stringify(parsed, null, 2))
+  // ── 2. Convert to the dashboard's units ───────────────────
+  // Values come back in the units the lab printed. Each is converted to the unit its
+  // marker is kept in; one that cannot be is flagged so the review leaves it unticked.
+  parsed = convertReport(parsed, markerUnitFor(db0))
+
+  // ── 3. Return for review; nothing is written until labs-confirm ──
+  // Logged as counts only: the values are health data, and container logs are kept.
+  const statuses = Object.values(parsed?.conversions ?? {}).reduce((n, c) => ({ ...n, [c.status]: (n[c.status] ?? 0) + 1 }), {})
+  console.log(`[labs-pdf] ${Object.keys(parsed?.metrics ?? {}).length} values (${parsed?.source_type ?? 'unknown type'}, ${parsed?.date ?? 'no date'})${Object.keys(statuses).length ? ': ' + Object.entries(statuses).map(([k, v]) => `${v} ${k}`).join(', ') : ''}`)
 
   res.json({ ok: true, debug: true, parsed, file_hash: fileHash, filename: storedFilename, original_filename: req.file.originalname })
 })
@@ -1566,7 +1609,7 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
 // ─────────────────────────────────────────────────────────────
 
 app.post('/api/:userId/import/labs-confirm', requireUser, (req, res) => {
-  const { date, source_type, metrics, reference_ranges, file_hash, filename, original_filename } = req.body
+  const { date, source_type, metrics, reference_ranges, units, file_hash, filename, original_filename } = req.body
   if (!date || !metrics) return res.status(400).json({ error: 'date and metrics are required' })
 
   const validMetrics = Object.entries(metrics)
@@ -1599,6 +1642,15 @@ app.post('/api/:userId/import/labs-confirm', requireUser, (req, res) => {
       updated_at    = excluded.updated_at
   `)
 
+  // A marker with no unit yet takes the unit its values arrived in (labs-pdf converted the
+  // rest to their marker's unit), so the next report's values are converted to it. A unit
+  // already set is never replaced.
+  const unitUpsert = db.prepare(`
+    INSERT INTO marker_configs (metric, unit, source, lab_report_id, updated_at)
+    VALUES (@metric, @unit, 'pdf_import', @lab_report_id, datetime('now'))
+    ON CONFLICT(metric) DO UPDATE SET unit = excluded.unit
+      WHERE marker_configs.unit IS NULL OR marker_configs.unit = ''
+  `)
   const markerNames = validMetrics.map(([k]) => k)
   const selected = new Set(markerNames)
 
@@ -1621,6 +1673,8 @@ app.post('/api/:userId/import/labs-confirm', requireUser, (req, res) => {
 
       for (const [metric, value] of validMetrics) {
         upsert.run({ date, metric, value: Number(value), source: 'pdf_import', notes: null, lab_report_id: reportId })
+        const unit = units?.[metric]
+        if (typeof unit === 'string' && unit.trim()) unitUpsert.run({ metric, unit: unit.trim(), lab_report_id: reportId })
       }
       for (const [metric, { low, high }] of selectedRanges) {
         if (low == null && high == null) continue

@@ -91,7 +91,7 @@ labels:
    docker compose up --build -d
    ```
 
-   No `ports:` mapping is needed: docktail handles exposing the service on the tailnet, so the container only needs to be reachable on the Docker network. Data persists in a bind-mounted volume (`/data` in the container). To turn on OCR, set `ANTHROPIC_API_KEY` in a `.env` file next to `compose.yaml`; without it everything but lab-file import works.
+   No `ports:` mapping is needed: docktail handles exposing the service on the tailnet, so the container only needs to be reachable on the Docker network. Data persists in a bind-mounted volume (`/data` in the container). To turn on OCR, set `ANTHROPIC_API_KEY` in a `.env` file next to `compose.yaml`, or mount a file holding the key and point `ANTHROPIC_API_KEY_FILE` at it; without either, everything but lab-file import works.
 
 3. **Point Health Auto Export at the tailnet address** (`https://health.<your-tailnet>.ts.net`, not `localhost`) in the automations described below, so your iPhone can sync from anywhere, not just your home Wi-Fi.
 
@@ -155,7 +155,7 @@ You can import from CSV, PNG or PDF
 
 **InBody**
 
-Just drop the PDF/PNG/CSV into the 'import' page, AI will OCR then import values. 
+Just drop the PDF/PNG/CSV into the 'import' page, AI will OCR then import values. Results printed in other units (g/L, mmol/L, …) are converted to the dashboard's; the review shows the printed value under each converted one and leaves unticked any value whose unit it could not convert. 
 
 **Health records (no AI needed)**
 

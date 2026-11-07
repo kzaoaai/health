@@ -17,6 +17,21 @@ const UNITS = {
 
 const SOURCE_LABEL = { blood_panel: 'Blood Panel', inbody: 'InBody Scan', other: 'Lab Report' }
 
+// Conversion statuses the server sets (units.js) that the review leaves unticked: a value
+// whose unit could not be read, or could not be converted to the marker's unit.
+const HELD_BACK = new Set(['unknown', 'no_unit'])
+
+// The line under a metric in the review: where its value came from, or why it is held back.
+function conversionNote(c, unit) {
+  if (!c) return null
+  const printed = [c.from_value, c.from_unit].filter(x => x != null && x !== '').join(' ')
+  if (c.status === 'converted') return { text: `from ${c.from_metric ? `${c.from_metric} ` : ''}${printed}`, warn: false }
+  if (c.status === 'unknown') return { text: `printed as ${printed}: no conversion to ${unit}. Ticked, it imports as ${c.from_value} ${unit}.`, warn: true }
+  if (c.status === 'no_unit') return { text: `no unit read. Ticked, it imports as ${c.from_value} ${unit}.`, warn: true }
+  if (c.status === 'new') return { text: 'new marker', warn: false }
+  return null
+}
+
 function toLabel(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
     .replace(/\bBmi\b/, 'BMI').replace(/\bHrv\b/, 'HRV').replace(/\bHdl\b/, 'HDL')
@@ -125,7 +140,8 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
       const result = await api.importLabsPdf(userId, file)
       if (result.debug) {
         const keys = Object.keys(result.parsed?.metrics ?? {})
-        setChecked(Object.fromEntries(keys.map(k => [k, true])))
+        const conversions = result.parsed?.conversions ?? {}
+        setChecked(Object.fromEntries(keys.map(k => [k, !HELD_BACK.has(conversions[k]?.status)])))
         setParsed(result.parsed)
         setFileHash(result.file_hash ?? null)
         setStoredFilename(result.filename ?? null)
@@ -213,6 +229,9 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
   const metricKeys = Object.keys(parsed?.metrics ?? {})
   const selectedCount = metricKeys.filter(k => checked[k]).length
   const allChecked = metricKeys.length > 0 && metricKeys.every(k => checked[k])
+  const statuses = metricKeys.map(k => parsed?.conversions?.[k]?.status)
+  const convertedCount = statuses.filter(st => st === 'converted').length
+  const heldBackCount = statuses.filter(st => HELD_BACK.has(st)).length
 
   return (
     <section id="import" className="mb-16">
@@ -282,18 +301,26 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
           </div>
 
           {/* Select all row */}
-          <div className="px-6 py-3 border-b border-[#243450]">
+          <div className="px-6 py-3 border-b border-[#243450] flex items-center justify-between gap-3">
             <button onClick={toggleAll} className="flex items-center gap-2.5 text-xs text-[#475569] hover:text-[#94a3b8] transition-colors">
               <Checkbox checked={allChecked} />
               {allChecked ? 'Deselect all' : 'Select all'}
             </button>
+            {(convertedCount > 0 || heldBackCount > 0) && (
+              <span className="text-xs text-[#475569]">
+                {convertedCount > 0 && `${convertedCount} converted to the dashboard's units`}
+                {convertedCount > 0 && heldBackCount > 0 && ' · '}
+                {heldBackCount > 0 && <span className="text-amber-400">{heldBackCount} left unticked: check the unit</span>}
+              </span>
+            )}
           </div>
 
           {/* Metric rows */}
           <div className="divide-y divide-[#131d2e]">
             {metricKeys.map(key => {
               const on = checked[key]
-              const unit = UNITS[key] ?? ''
+              const unit = parsed.units?.[key] ?? UNITS[key] ?? ''
+              const note = conversionNote(parsed.conversions?.[key], unit)
               return (
                 <button
                   key={key}
@@ -301,8 +328,13 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
                   className="w-full flex items-center gap-4 px-6 py-3.5 hover:bg-[#111827] transition-colors text-left"
                 >
                   <Checkbox checked={on} />
-                  <span className={`flex-1 text-sm transition-colors ${on ? 'text-[#cbd5e1]' : 'text-[#374d6c]'}`}>
-                    {toLabel(key)}
+                  <span className="flex-1 min-w-0">
+                    <span className={`block text-sm transition-colors ${on ? 'text-[#cbd5e1]' : 'text-[#374d6c]'}`}>
+                      {toLabel(key)}
+                    </span>
+                    {note && (
+                      <span className={`block text-xs mt-0.5 ${note.warn ? 'text-amber-400' : 'text-[#475569]'}`}>{note.text}</span>
+                    )}
                   </span>
                   <span className={`text-sm font-mono tabular-nums transition-colors ${on ? 'text-white' : 'text-[#374d6c]'}`}>
                     {parsed.metrics[key]}
