@@ -103,5 +103,4 @@ The repo is public: no real health values, names, hostnames, addresses or emails
 
 - Upstream's open PR #9 (local-vs-UTC dates and the sleep night comparisons) may fix bugs this app inherited; not yet checked.
 - `README.md` still presents the original project: its badges, links and prebuilt image point at spuder/health.
-- GitHub still lists the repo as a fork of spuder/health, so `gh pr create` offers upstream as the base; name `--repo kzaoaai/health` explicitly.
 - Ideas, not yet asked for: lab results shown in SI units as a display setting, automatic lab-report import from a document archive, and links that open a given section or card.
