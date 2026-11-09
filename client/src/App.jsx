@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { UserProvider, useUser } from './context/UserContext'
 import { api } from './api'
 import Sidebar from './components/Sidebar'
@@ -14,8 +14,35 @@ import ImportSection from './components/ImportSection'
 import ProtocolsSection from './components/ProtocolsSection'
 import SettingsSection from './components/SettingsSection'
 import ExportModal from './components/ExportModal'
+import SearchPalette from './components/SearchPalette'
+import { SECTIONS } from './sections'
+import { buildIndex } from './search'
 
-const NAV_IDS = ['body', 'sleep', 'exercise', 'heartrate', 'applehealth', 'labs', 'dna', 'events', 'protocols', 'import']
+const NAV_IDS = SECTIONS.map(s => s.id)
+
+// Scroll a search result's element into view and flash it. The element may not exist yet
+// (a section that was hidden, a lab marker the filters hid), so wait a few frames for it.
+function revealElement(id, { flash = true } = {}) {
+  let frames = 0
+  const step = () => {
+    const el = document.getElementById(id)
+    if (!el) {
+      if (++frames < 60) requestAnimationFrame(step)
+      return
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: flash ? 'center' : 'start' })
+    if (!flash) return
+    el.classList.remove('search-flash')
+    void el.offsetWidth  // restart the animation when the same card is picked twice
+    el.classList.add('search-flash')
+    setTimeout(() => el.classList.remove('search-flash'), 2200)
+  }
+  requestAnimationFrame(step)
+}
+
+function isTyping(el) {
+  return el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName))
+}
 
 function useHiddenSections(userId) {
   const storageKey = userId ? `health_hidden_sections_${userId}` : null
@@ -139,6 +166,8 @@ function Dashboard() {
   const [showExport, setShowExport] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [printSections, setPrintSections] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [labsFocus, setLabsFocus] = useState(null)
   const [bodyData,      setBodyData]      = useState(null)
   const [sleepData,     setSleepData]     = useState(null)
   const [exerciseData,  setExerciseData]  = useState(null)
@@ -203,6 +232,35 @@ function Dashboard() {
     setDnaData(null)
     loadAll({ showLoading: true })
   }, [currentUserId, loadAll])
+
+  const searchIndex = useMemo(
+    () => buildIndex({ body: bodyData, sleep: sleepData, exercise: exerciseData, heartrate: heartrateData, appleHealth: appleHealthData, blood: bloodData }, hiddenSections),
+    [bodyData, sleepData, exerciseData, heartrateData, appleHealthData, bloodData, hiddenSections],
+  )
+
+  // ⌘K / Ctrl+K anywhere, or "/" when not typing in a field, opens the search.
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(o => !o)
+      } else if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  function handleSearchSelect(result) {
+    setSearchOpen(false)
+    setSidebarOpen(false)
+    if (hiddenSections.has(result.section)) toggleSection(result.section)
+    if (result.section === 'labs' && result.kind !== 'section') setLabsFocus({ key: result.key, group: result.group, at: Date.now() })
+    setActiveSection(result.section)
+    revealElement(result.target, { flash: result.kind !== 'section' })
+  }
 
   const handleNav = (id) => {
     setActiveSection(id)
@@ -280,7 +338,7 @@ function Dashboard() {
   const accentRgb = hexToRgb(accentColor)
 
   return (
-    <div className="min-h-screen bg-[#0d1520]">
+    <div className="min-h-screen bg-[#0d1520]" style={{ '--accent': accentColor }}>
       {/* Ambient accent glow — fixed to the viewport so it stays visible while scrolling */}
       <div
         className="no-print fixed inset-0 -z-10 pointer-events-none"
@@ -298,7 +356,7 @@ function Dashboard() {
         style={{ background: accentColor, boxShadow: `0 0 24px 0 ${accentColor}` }}
       />
 
-      <Sidebar active={activeSection} onNav={handleNav} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} hiddenSections={hiddenSections} onOpenSettings={() => setShowSettings(true)} />
+      <Sidebar active={activeSection} onNav={handleNav} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} hiddenSections={hiddenSections} onOpenSettings={() => setShowSettings(true)} onOpenSearch={() => setSearchOpen(true)} />
 
       {/* Mobile top bar */}
       <div className="no-print md:hidden fixed top-0 left-0 right-0 z-20 h-14 bg-[#111826] border-b border-[#243450] flex items-center px-4 gap-3">
@@ -312,6 +370,16 @@ function Dashboard() {
           <span className="block h-0.5 w-5 bg-current rounded" />
         </button>
         <span className="text-white font-semibold text-sm tracking-tight">Health</span>
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="ml-auto w-9 h-9 flex items-center justify-center rounded-lg text-[#94a3b8] hover:text-white hover:bg-[#1a2540]"
+          aria-label="Search"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="7" strokeWidth="2" />
+            <line x1="16.5" y1="16.5" x2="22" y2="22" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       <main className="md:ml-56 px-4 md:px-10 py-6 md:py-10 pt-20 md:pt-10 max-w-[1600px]">
@@ -363,7 +431,7 @@ function Dashboard() {
             {!hiddenSections.has('exercise')  && <div className={printSections && !printSections.exercise  ? 'print-exclude' : ''}><ExerciseSection  data={exerciseData}  userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('heartrate') && <div className={printSections && !printSections.heartrate ? 'print-exclude' : ''}><HeartRateSection data={heartrateData} /></div>}
             {!hiddenSections.has('applehealth') && <div className={printSections && !printSections.applehealth ? 'print-exclude' : ''}><AppleHealthSection data={appleHealthData} /></div>}
-            {!hiddenSections.has('labs')      && <div className={printSections && !printSections.labs      ? 'print-exclude' : ''}><LabsSection      data={bloodData}     reports={labReports?.reports ?? []} userId={currentUserId} onRefresh={loadAll} /></div>}
+            {!hiddenSections.has('labs')      && <div className={printSections && !printSections.labs      ? 'print-exclude' : ''}><LabsSection      data={bloodData}     reports={labReports?.reports ?? []} userId={currentUserId} onRefresh={loadAll} focus={labsFocus} /></div>}
             {!hiddenSections.has('dna')       && <div className={printSections && !printSections.dna       ? 'print-exclude' : ''}><DnaSection       data={dnaData}       userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('events')    && <div className={printSections && !printSections.events    ? 'print-exclude' : ''}><EventsSection    data={eventsData}    userId={currentUserId} onRefresh={loadAll} /></div>}
             {!hiddenSections.has('protocols') && <div className="print-exclude"><ProtocolsSection data={protocolsData ?? []} userId={currentUserId} onRefresh={loadAll} /></div>}
@@ -371,6 +439,7 @@ function Dashboard() {
           </>
         )}
       </main>
+      {searchOpen && <SearchPalette index={searchIndex} onSelect={handleSearchSelect} onClose={() => setSearchOpen(false)} />}
       {showExport && <ExportModal onClose={() => setShowExport(false)} onPrint={handlePrint} onExportPng={handleExportPng} />}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -4,6 +4,7 @@ import WeightChart from './WeightChart'
 import LogModal from './LogModal'
 import ImportPanel from './ImportPanel'
 import RawDataModal from './RawDataModal'
+import { metricAnchor } from '../sections'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -63,7 +64,7 @@ function BodyTrendTooltip({ active, payload, unit }) {
   )
 }
 
-function BodyTrendChart({ title, dataKey, unit, color, entries }) {
+function BodyTrendChart({ id, title, dataKey, unit, color, entries }) {
   const filtered = entries.filter(e => e[dataKey] != null)
   const latest = filtered[filtered.length - 1]
   const prev   = filtered[filtered.length - 2]
@@ -76,7 +77,7 @@ function BodyTrendChart({ title, dataKey, unit, color, entries }) {
   const yMax = allVals.length ? Math.ceil(Math.max(...allVals) + padding) : 100
 
   return (
-    <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-5 flex flex-col gap-3">
+    <div id={id} className="bg-[#131d2e] border border-[#243450] rounded-2xl p-5 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-[#475569] text-xs font-medium uppercase tracking-wider">{title}</span>
       </div>
@@ -114,12 +115,12 @@ function BodyTrendChart({ title, dataKey, unit, color, entries }) {
   )
 }
 
-function MetricCard({ label, value, unit, category, delta, deltaLabel, sublabel, accent = '#7c3aed' }) {
+function MetricCard({ id, label, value, unit, category, delta, deltaLabel, sublabel, accent = '#7c3aed' }) {
   const isUp = delta > 0
   const isDown = delta < 0
 
   return (
-    <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-5 flex flex-col gap-3">
+    <div id={id} className="bg-[#131d2e] border border-[#243450] rounded-2xl p-5 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-[#475569] text-xs font-medium uppercase tracking-wider">{label}</span>
         {category && (
@@ -206,18 +207,21 @@ export default function BodySection({ data, events, userId, onRefresh }) {
       </div>
 
       {/* Weight chart */}
-      <WeightChart entries={entries} weightBySource={data?.weightBySource ?? {}} events={events?.entries ?? []} />
+      <div id={metricAnchor('body', 'weight')} className="rounded-2xl">
+        <WeightChart entries={entries} weightBySource={data?.weightBySource ?? {}} events={events?.entries ?? []} />
+      </div>
 
       {/* Trend charts: Weight · SMM · Body Fat Mass */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
         <BodyTrendChart title="Weight"          dataKey="weight"              unit="lbs" color="#a78bfa" entries={entries} />
-        <BodyTrendChart title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit="lbs" color="#34d399" entries={entries} />
-        <BodyTrendChart title="Body Fat Mass"   dataKey="body_fat_mass"       unit="lbs" color="#f59e0b" entries={entries} />
+        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit="lbs" color="#34d399" entries={entries} />
+        <BodyTrendChart id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass"   dataKey="body_fat_mass"       unit="lbs" color="#f59e0b" entries={entries} />
       </div>
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
         <MetricCard
+          id={metricAnchor('body', 'bmi')}
           label="BMI"
           value={latestBMI}
           unit=""
@@ -234,6 +238,7 @@ export default function BodySection({ data, events, userId, onRefresh }) {
           sublabel="Muscle mass percentage"
         />
         <MetricCard
+          id={metricAnchor('body', 'visceral_fat')}
           label="Visceral Fat"
           value={latestVF}
           unit="level"

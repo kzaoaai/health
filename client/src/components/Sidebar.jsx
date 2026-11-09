@@ -1,20 +1,13 @@
 import ProfileSwitcher from './ProfileSwitcher'
 import { useUser } from '../context/UserContext'
+import { SECTIONS } from '../sections'
 
-const NAV = [
-  { id: 'body',      label: 'Body',      icon: '⚖️',  accent: '#7c3aed' },
-  { id: 'sleep',     label: 'Sleep',     icon: '🌙',  accent: '#60a5fa' },
-  { id: 'exercise',  label: 'Exercise',  icon: '🏃',  accent: '#f97316' },
-  { id: 'heartrate', label: 'Heart Rate', icon: '❤️',  accent: '#f43f5e' },
-  { id: 'applehealth', label: 'Apple Health', icon: '📈', accent: '#38bdf8' },
-  { id: 'labs',      label: 'Labs',      icon: '🧪',  accent: '#34d399' },
-  { id: 'dna',       label: 'DNA',       icon: '🧬',  accent: '#22d3ee' },
-  { id: 'events',    label: 'Events',    icon: '📅',  accent: '#f59e0b' },
-  { id: 'protocols', label: 'Protocols', icon: '📋',  accent: '#a78bfa' },
-  { id: 'import',    label: 'Import',    icon: '↑',   accent: '#a78bfa' },
-]
+const NAV = SECTIONS
 
-export default function Sidebar({ active, onNav, isOpen, onClose, hiddenSections = new Set(), onOpenSettings }) {
+// ⌘K on a Mac, Ctrl K elsewhere.
+const SHORTCUT = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+
+export default function Sidebar({ active, onNav, isOpen, onClose, hiddenSections = new Set(), onOpenSettings, onOpenSearch }) {
   const { currentUser } = useUser()
   const accentColor = currentUser?.color ?? '#7c3aed'
 
@@ -53,6 +46,21 @@ export default function Sidebar({ active, onNav, isOpen, onClose, hiddenSections
           <p className="text-[#374d6c] text-[11px] mt-3">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
+        </div>
+
+        {/* Search */}
+        <div className="px-3 pt-4">
+          <button
+            onClick={onOpenSearch}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[#243450] hover:border-[#374d6c] bg-[#0d1520] text-[#475569] hover:text-[#94a3b8] text-sm transition-colors"
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7" strokeWidth="2" />
+              <line x1="16.5" y1="16.5" x2="22" y2="22" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="flex-1 text-left">Search</span>
+            <kbd className="hidden md:inline text-[10px] font-sans border border-[#243450] rounded px-1.5 py-px">{SHORTCUT}</kbd>
+          </button>
         </div>
 
         {/* Nav */}

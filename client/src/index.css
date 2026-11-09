@@ -136,3 +136,29 @@ select option {
     margin-top: 32px;
   }
 }
+
+/* Search: room under the mobile top bar when a result scrolls into view, and a brief
+   outline on the card it lands on. */
+main [id] {
+  scroll-margin-top: 1.5rem;
+}
+@media (max-width: 767px) {
+  main [id] {
+    scroll-margin-top: 4.5rem;
+  }
+}
+.search-flash {
+  animation: search-flash 2.2s ease-out;
+}
+@keyframes search-flash {
+  0%, 35% {
+    outline: 2px solid var(--accent, #a78bfa);
+    outline-offset: -2px;
+    box-shadow: 0 0 28px 2px color-mix(in srgb, var(--accent, #a78bfa) 35%, transparent);
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    box-shadow: 0 0 28px 2px transparent;
+  }
+}

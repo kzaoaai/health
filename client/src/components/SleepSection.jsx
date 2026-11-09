@@ -303,7 +303,7 @@ export default function SleepSection({ data }) {
       ) : (
         <>
           {/* Hero ring card */}
-          <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mb-4">
+          <div id="sleep-night" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mb-4">
             <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
               <div className="flex-shrink-0">
                 <SleepRings entry={selectedEntry} size={210} />
@@ -378,7 +378,7 @@ export default function SleepSection({ data }) {
           </div>
 
           {/* History rings card */}
-          <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
+          <div id="sleep-history" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
             <div className="flex items-center justify-between mb-5">
               <p className="text-white text-sm font-medium">History</p>
               <div className="flex items-center gap-1 bg-[#0d1520] border border-[#243450] rounded-lg p-1">
@@ -427,7 +427,7 @@ export default function SleepSection({ data }) {
 
           {/* Bedtime chart */}
           {bedtimeData.length > 0 && (
-            <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mt-4">
+            <div id="sleep-bedtime" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mt-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-white text-sm font-medium">🌙 Bedtime</p>

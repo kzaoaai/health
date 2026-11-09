@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import RawDataModal from './RawDataModal'
+import { markerTitle } from '../markers'
+import { metricAnchor } from '../sections'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 // Every Apple Health metric that no other section charts: steps, calories, walking
@@ -16,9 +18,7 @@ const RANGES = [
   { label: 'All', days: null },
 ]
 
-function toTitle(key) {
-  return key.split('_').map(w => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ')
-}
+const toTitle = markerTitle
 
 function fmtValue(v) {
   if (v == null || isNaN(v)) return '—'
@@ -84,7 +84,7 @@ function MiniTooltip({ active, payload, bucket }) {
 
 function MetricCard({ metric, series, bucket }) {
   return (
-    <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-4 min-w-0">
+    <div id={metricAnchor('applehealth', metric.key)} className="bg-[#131d2e] border border-[#243450] rounded-2xl p-4 min-w-0">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-[#94a3b8] text-xs font-medium truncate" title={metric.key}>{toTitle(metric.key)}</p>
         <p className="text-[#475569] text-[10px] shrink-0">{fmtDate(metric.latest.date, 'day')}</p>

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import RawDataModal from './RawDataModal'
 import { api } from '../api'
+import { LAB_CATEGORIES, ALL_CATEGORIZED, markerTitle, getMarkerStatus } from '../markers'
+import { metricAnchor } from '../sections'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ReferenceArea, ResponsiveContainer,
@@ -8,63 +10,6 @@ import {
 
 const CHART_COLORS = ['#a78bfa', '#34d399', '#60a5fa', '#f59e0b', '#f87171', '#e879f9', '#2dd4bf', '#fb923c']
 const SKIP_KEYS = new Set(['date', 'source', 'notes'])
-
-const LAB_CATEGORIES = [
-  {
-    id: 'hormones',
-    label: 'Hormone Balance',
-    color: '#a78bfa',
-    keys: [
-      'testosterone', 'total_testosterone', 'free_testosterone', 'estrogen', 'estradiol', 'shbg',
-      'dhea_s', 'cortisol', 'igf1', 'psa', 'tsh', 'free_t3', 'free_t4',
-    ],
-  },
-  {
-    id: 'heart',
-    label: 'Heart Health',
-    color: '#f87171',
-    keys: [
-      'total_cholesterol', 'ldl', 'hdl', 'triglycerides', 'apob',
-      'remnant_cholesterol', 'triglycerides_hdl_ratio', 'total_cholesterol_hdl_ratio',
-      'ldl_apob_ratio', 'homocysteine', 'crp', 'hscrp',
-    ],
-  },
-  {
-    id: 'fertility',
-    label: 'Fertility',
-    color: '#f472b6',
-    keys: [
-      'oxidative_stress_adduct', 'dna_fragmentation_index', 'high_dna_stainability',
-      'semen_volume', 'semen_ph', 'sperm_progressive_motility', 'sperm_non_progressive_motility',
-      'sperm_non_motile', 'total_sperm_motility', 'sperm_morphology', 'sperm_count_per_ml',
-      'total_sperm_count', 'total_progressive_sperm_count',
-    ],
-  },
-  {
-    id: 'metabolic',
-    label: 'Metabolic Efficiency',
-    color: '#34d399',
-    keys: [
-      'glucose', 'hba1c', 'fructosamine',
-      'vitamin_d', 'vitamin_b12', 'ferritin', 'iron', 'magnesium', 'calcium',
-      'white_blood_cells', 'red_blood_cells', 'hemoglobin', 'hematocrit', 'platelets',
-      'neutrophils', 'lymphocytes', 'monocytes', 'eosinophils', 'basophils',
-      'sodium', 'potassium', 'creatinine', 'egfr', 'bun', 'uric_acid',
-      'albumin', 'total_protein', 'globulin',
-      'alt', 'ast', 'ggt', 'alkaline_phosphatase', 'total_bilirubin',
-    ],
-  },
-  {
-    id: 'microplastics',
-    label: 'Microplastics',
-    color: '#fb923c',
-    keys: [
-      'microplastics_total', 'microplastics_30_70_um', 'microplastics_10_30_um', 'microplastics_under_10_um',
-    ],
-  },
-]
-
-const ALL_CATEGORIZED = new Set(LAB_CATEGORIES.flatMap(c => c.keys))
 
 function fmtRange(low, high, unit) {
   const u = unit ? ` ${unit}` : ''
@@ -74,40 +19,12 @@ function fmtRange(low, high, unit) {
   return ''
 }
 
-function toTitle(key) {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
+const toTitle = markerTitle
 
 // Mirrors the server's normalizeMetricKey — used only to preview the resulting
 // marker name client-side before the merge request round-trips.
 function toKey(str) {
   return str.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-}
-
-function getMarkerStatus(key, entries, markers) {
-  const filtered = entries.filter(e => e[key] != null)
-  const val = filtered[filtered.length - 1]?.[key]
-  if (val == null) return null
-
-  const cfg = markers[key]
-  if (!cfg) return null
-
-  const { optimal_low, optimal_high, range_low, range_high } = cfg
-  // A one-sided bound (e.g. "higher is better") counts as having a range
-  const hasOptimal = optimal_low != null || optimal_high != null
-  const hasNormal = range_low != null || range_high != null
-  if (!hasOptimal && !hasNormal) return null
-
-  const inOptimal = hasOptimal &&
-    (optimal_low == null || val >= optimal_low) &&
-    (optimal_high == null || val <= optimal_high)
-  const inNormal = hasNormal &&
-    (range_low == null || val >= range_low) &&
-    (range_high == null || val <= range_high)
-
-  if (inOptimal) return 'optimal'
-  if (inNormal) return 'normal'
-  return 'out'
 }
 
 function LabTableRow({ markerKey, markers, entries }) {
@@ -126,7 +43,7 @@ function LabTableRow({ markerKey, markers, entries }) {
   const isOut = status === 'out'
 
   return (
-    <div className="flex items-center px-4 py-2.5 border-b border-[#161f30] last:border-0 hover:bg-[#0f1825]/50 transition-colors gap-3">
+    <div id={metricAnchor('labs', markerKey)} className="flex items-center px-4 py-2.5 border-b border-[#161f30] last:border-0 hover:bg-[#0f1825]/50 transition-colors gap-3">
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <span className="text-[#cbd5e1] text-sm">{toTitle(markerKey)}</span>
         <MarkerInfoPopup markerKey={markerKey} />
@@ -436,7 +353,7 @@ function LabChart({ title, markerKey, entries, unit, color, rangeHigh, rangeLow,
   const yMax = Math.ceil(dataMax + padding)
 
   return (
-    <div className={`bg-[#131d2e] border rounded-2xl p-6 flex flex-col gap-4 ${isOut ? 'border-red-900' : 'border-[#243450]'
+    <div id={metricAnchor('labs', markerKey)} className={`bg-[#131d2e] border rounded-2xl p-6 flex flex-col gap-4 ${isOut ? 'border-red-900' : 'border-[#243450]'
       }`}>
       <div className="flex items-start justify-between">
         <div>
@@ -551,7 +468,7 @@ const STATUS_FILTERS = [
   { id: 'out', label: 'Out of Range', activeClass: 'border-red-700     bg-red-950     text-red-400' },
 ]
 
-export default function LabsSection({ data, reports = [], userId, onRefresh }) {
+export default function LabsSection({ data, reports = [], userId, onRefresh, focus }) {
   const [activeFilters, setActiveFilters] = useState(new Set(['optimal', 'normal', 'out']))
   const [searchQuery, setSearchQuery] = useState('')
   const [showRaw, setShowRaw] = useState(false)
@@ -615,13 +532,25 @@ export default function LabsSection({ data, reports = [], userId, onRefresh }) {
 
   // Build grouped sections: each LAB_CATEGORY, then "Other" for uncategorized keys
   const sections = LAB_CATEGORIES.map(cat => ({
+    id: cat.id,
     label: cat.label,
     color: cat.color,
     keys: sortByStatus(cat.keys.filter(k => allMarkerKeys.includes(k) && isVisible(k))),
   })).filter(s => s.keys.length > 0)
 
   const otherKeys = sortByStatus(allMarkerKeys.filter(k => !ALL_CATEGORIZED.has(k) && isVisible(k)))
-  if (otherKeys.length) sections.push({ label: 'Other', color: '#64748b', keys: otherKeys, compact: true })
+  if (otherKeys.length) sections.push({ id: 'other', label: 'Other', color: '#64748b', keys: otherKeys, compact: true })
+
+  // A search result for a marker or group that the status filters or the marker search
+  // hide clears them, so there is something on the page to scroll to.
+  useEffect(() => {
+    if (!focus) return
+    const hidden = focus.key ? !isVisible(focus.key) : !sections.some(s => s.id === focus.group)
+    if (hidden) {
+      setActiveFilters(new Set(STATUS_FILTERS.map(f => f.id)))
+      setSearchQuery('')
+    }
+  }, [focus])
 
   return (
     <section id="labs" className="mb-16">
@@ -707,7 +636,7 @@ export default function LabsSection({ data, reports = [], userId, onRefresh }) {
       ) : layout === 'card' ? (
         <div className="flex flex-col gap-8">
           {sections.map(section => (
-            <div key={section.label}>
+            <div key={section.label} id={`labs-group-${section.id}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="w-1 h-4 rounded-full" style={{ backgroundColor: section.color }} />
                 <h3 className="text-[#94a3b8] text-sm font-medium">{section.label}</h3>
@@ -738,7 +667,7 @@ export default function LabsSection({ data, reports = [], userId, onRefresh }) {
       ) : (
         <div className="flex flex-col gap-6">
           {sections.map(section => (
-            <div key={section.label}>
+            <div key={section.label} id={`labs-group-${section.id}`}>
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-1 h-4 rounded-full" style={{ backgroundColor: section.color }} />
                 <h3 className="text-[#94a3b8] text-sm font-medium">{section.label}</h3>

@@ -140,7 +140,7 @@ export default function HeartRateSection({ data }) {
       </div>
 
       {/* Chart */}
-      <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
+      <div id="heartrate-chart" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="text-white text-sm font-medium">Resting Heart Rate</p>

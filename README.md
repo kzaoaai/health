@@ -42,6 +42,7 @@
 - **Track protocols:** supplements and medications over time.
 - **Optional OCR** scanning of bloodwork.
 - **REST API** to sync with external services.
+- **Search** every section, metric and lab marker (⌘K or `/`): "body", "weight", "heart rate", "HDL", "good cholesterol".
 
 ## What it does
 

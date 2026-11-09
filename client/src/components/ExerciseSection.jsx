@@ -148,7 +148,7 @@ export default function ExerciseSection({ data, userId, onRefresh }) {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <div id="exercise-stats" className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 rounded-2xl">
         <StatCard
           label="Sessions This Week"
           value={workoutsThisWeek || null}
@@ -194,7 +194,7 @@ export default function ExerciseSection({ data, userId, onRefresh }) {
       </div>
 
       {/* Exercise minutes bar chart */}
-      <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mb-4">
+      <div id="exercise-minutes" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6 mb-4">
         <p className="text-white text-sm font-medium mb-4">Exercise Minutes / Day</p>
         {recent.filter(e => e.ex_minutes != null).length === 0 ? (
           <div className="flex items-center justify-center h-40 text-[#374d6c] text-sm">
@@ -249,7 +249,7 @@ export default function ExerciseSection({ data, userId, onRefresh }) {
 
       {/* HR zone stacked bar chart */}
       {hasZoneData && (
-        <div className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
+        <div id="exercise-zones" className="bg-[#131d2e] border border-[#243450] rounded-2xl p-6">
           <p className="text-white text-sm font-medium mb-4">Heart Rate Zones / Day</p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={recent} margin={{ top: 4, right: 8, left: -20, bottom: 0 }} barSize={recent.length > 30 ? 5 : 9}>
