@@ -5,6 +5,7 @@
 
 import { SECTIONS, metricAnchor } from './sections.js'
 import { LAB_CATEGORIES, ALL_CATEGORIZED, markerTitle, getMarkerStatus } from './markers.js'
+import { DEFAULT_UNITS, displayMetric } from './unitPrefs.js'
 
 const SKIP_KEYS = new Set(['date', 'source', 'notes'])
 const SECTION_BY_ID = Object.fromEntries(SECTIONS.map(s => [s.id, s]))
@@ -147,8 +148,18 @@ export function formatValue(key, v) {
   return String(Number(v.toPrecision(3)))
 }
 
-function valueOf(key, l, unit = '', status = null) {
-  return l && { text: formatValue(key, l.value), unit: unit ?? '', date: l.date, status }
+// The result's value as the dashboard shows it: in the profile's units, with a status
+// ('optimal', 'normal', 'out') where the dashboard rates the value.
+function valueOf(key, l, unit = '', status = null, units = DEFAULT_UNITS) {
+  if (!l) return null
+  const shown = displayMetric(key, l.value, units)
+  return { text: formatValue(key, shown ? shown.value : l.value), unit: shown ? shown.unit : (unit ?? ''), date: l.date, status }
+}
+
+// The Body cards' own ratings (BodySection), as statuses: red there is 'out'.
+const CARD_STATUS = {
+  bmi: v => (v < 18.5 || v >= 30 ? 'out' : v >= 25 ? 'normal' : 'optimal'),
+  visceral_fat: v => (v > 14 ? 'out' : v > 9 ? 'normal' : 'optimal'),
 }
 
 function entry({ kind, section, key = null, group = null, label, target, where, aliases = [], context = [], value = null }, hidden) {
@@ -175,8 +186,9 @@ function keysIn(entries) {
 }
 
 // data: the dashboard's loaded section data ({ body, sleep, exercise, heartrate,
-// appleHealth, blood }); hidden: the ids of sections hidden in Settings.
-export function buildIndex(data = {}, hidden = new Set()) {
+// appleHealth, blood }); hidden: the ids of sections hidden in Settings; units: the
+// profile's display units (unitPrefs.js).
+export function buildIndex(data = {}, hidden = new Set(), units = DEFAULT_UNITS) {
   const { body, sleep, exercise, heartrate, appleHealth, blood } = data
   const out = []
 
@@ -190,7 +202,8 @@ export function buildIndex(data = {}, hidden = new Set()) {
     if (c.optional && !l) continue
     out.push(entry({
       kind: 'card', section: c.section, key: c.key ?? null, label: c.label,
-      target: c.target ?? metricAnchor(c.section, c.key), aliases: c.aliases, value: valueOf(c.key, l, c.unit),
+      target: c.target ?? metricAnchor(c.section, c.key), aliases: c.aliases,
+      value: valueOf(c.key, l, c.unit, l && CARD_STATUS[c.key] ? CARD_STATUS[c.key](l.value) : null, units),
     }, hidden))
   }
 
@@ -212,7 +225,7 @@ export function buildIndex(data = {}, hidden = new Set()) {
       out.push(entry({
         kind: 'metric', section: 'labs', key: k, group: g.id, label: markerTitle(k),
         target: metricAnchor('labs', k), where: `Labs · ${g.label}`, aliases: MARKER_ALIASES[k],
-        context: [g.label], value: valueOf(k, l, markers[k]?.unit, getMarkerStatus(k, labEntries, markers)),
+        context: [g.label], value: valueOf(k, l, markers[k]?.unit, getMarkerStatus(k, labEntries, markers), units),
       }, hidden))
     }
   }
@@ -223,7 +236,7 @@ export function buildIndex(data = {}, hidden = new Set()) {
     if (!l) continue
     out.push(entry({
       kind: 'metric', section: 'applehealth', key: k, label: markerTitle(k),
-      target: metricAnchor('applehealth', k), aliases: APPLE_ALIASES[k], value: valueOf(k, l),
+      target: metricAnchor('applehealth', k), aliases: APPLE_ALIASES[k], value: valueOf(k, l, '', null, units),
     }, hidden))
   }
 
@@ -283,14 +296,21 @@ function typoScore(e, tokens) {
 
 const KIND_ORDER = { section: 0, group: 1, card: 2, metric: 3 }
 
-export function search(index, query, limit = 40) {
+export const isOutOfRange = e => e.value?.status === 'out'
+
+// outOfRange: only results whose newest value is out of range; with no query, all of them.
+export function search(index, query, { outOfRange = false, limit = 40 } = {}) {
+  const pool = outOfRange ? index.filter(isOutOfRange) : index
   const q = normalize(query)
-  if (!q) return index.filter(e => e.kind === 'section')
+  if (!q) {
+    if (!outOfRange) return pool.filter(e => e.kind === 'section')
+    return [...pool].sort((a, b) => (a.where ?? '').localeCompare(b.where ?? '') || a.label.localeCompare(b.label))
+  }
   const tokens = q.split(' ')
 
-  let scored = index.map(e => ({ e, s: scoreEntry(e, q, tokens) })).filter(x => x.s > 0)
+  let scored = pool.map(e => ({ e, s: scoreEntry(e, q, tokens) })).filter(x => x.s > 0)
   if (!scored.length && q.length >= 4) {
-    scored = index.map(e => ({ e, s: typoScore(e, tokens) })).filter(x => x.s > 0)
+    scored = pool.map(e => ({ e, s: typoScore(e, tokens) })).filter(x => x.s > 0)
   }
   return scored
     .sort((a, b) =>

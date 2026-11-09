@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { api } from '../api'
 import WeightChart from './WeightChart'
 import LogModal from './LogModal'
 import ImportPanel from './ImportPanel'
 import RawDataModal from './RawDataModal'
 import { metricAnchor } from '../sections'
+import { useUnits } from '../context/UserContext'
+import { convertEntries, displayMetric } from '../unitPrefs'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -40,15 +42,15 @@ function viscFatCategory(vf) {
   return { label: 'Very High', color: 'text-red-400' }
 }
 
-// Skeletal muscle as a share of body weight, per measurement: InBody reports the muscle in
-// lbs, and the weight on the same scan (or the newest weight before it) gives the share.
+// Skeletal muscle as a share of body weight, per measurement: the muscle mass and the
+// weight on the same scan (or the newest weight before it), both in the same unit.
 function smmPercents(entries) {
   const out = []
   let weight = null
   for (const e of entries) {  // date-ascending
     if (e.weight != null) weight = e.weight
     if (e.skeletal_muscle_mass != null && weight) {
-      out.push({ date: e.date, pct: Math.round((e.skeletal_muscle_mass / weight) * 1000) / 10, lbs: e.skeletal_muscle_mass })
+      out.push({ date: e.date, pct: Math.round((e.skeletal_muscle_mass / weight) * 1000) / 10, mass: e.skeletal_muscle_mass })
     }
   }
   return out
@@ -189,7 +191,13 @@ export default function BodySection({ data, events, userId, onRefresh }) {
   const [showImport, setShowImport] = useState(false)
   const [showRaw, setShowRaw]       = useState(false)
 
-  const entries = data?.entries ?? []
+  // In the profile's units from here on: charts, deltas and the muscle share all agree.
+  const units = useUnits()
+  const mu = units.weight
+  const entries = useMemo(() => convertEntries(data?.entries ?? [], units), [data, units])
+  const weightBySource = useMemo(() => Object.fromEntries(
+    Object.entries(data?.weightBySource ?? {}).map(([src, pts]) => [src, pts.map(p => ({ ...p, value: displayMetric('weight', p.value, units).value }))]),
+  ), [data, units])
 
   const latestWeight = getLatest(entries, 'weight')
   const prevWeight = getPrev(entries, 'weight')
@@ -202,7 +210,7 @@ export default function BodySection({ data, events, userId, onRefresh }) {
   // scan, or body fat and lean mass from Apple Health).
   const extras = [
     { key: 'body_fat',         title: 'Body Fat',   unit: '%',    color: '#f59e0b', better: 'down' },
-    { key: 'lean_mass',        title: 'Lean Mass',  unit: 'lbs',  color: '#34d399', better: 'up' },
+    { key: 'lean_mass',        title: 'Lean Mass',  unit: mu,     color: '#34d399', better: 'up' },
     { key: 'bmr',              title: 'BMR',        unit: 'kcal', color: '#60a5fa', better: null },
     { key: 'total_body_water', title: 'Body Water', unit: 'L',    color: '#38bdf8', better: null },
   ].filter(m => entries.some(e => e[m.key] != null))
@@ -238,14 +246,14 @@ export default function BodySection({ data, events, userId, onRefresh }) {
 
       {/* Weight chart */}
       <div id={metricAnchor('body', 'weight')} className="rounded-2xl">
-        <WeightChart entries={entries} weightBySource={data?.weightBySource ?? {}} events={events?.entries ?? []} />
+        <WeightChart entries={entries} weightBySource={weightBySource} events={events?.entries ?? []} unit={mu} />
       </div>
 
       {/* Trend charts: Weight · SMM · Body Fat Mass */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-        <BodyTrendChart title="Weight"          dataKey="weight"              unit="lbs" color="#a78bfa" entries={entries} />
-        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit="lbs" color="#34d399" entries={entries} better="up" />
-        <BodyTrendChart id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass"   dataKey="body_fat_mass"       unit="lbs" color="#f59e0b" entries={entries} />
+        <BodyTrendChart title="Weight"          dataKey="weight"              unit={mu} color="#a78bfa" entries={entries} />
+        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit={mu} color="#34d399" entries={entries} better="up" />
+        <BodyTrendChart id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass"   dataKey="body_fat_mass"       unit={mu} color="#f59e0b" entries={entries} />
       </div>
 
       {/* Metric cards */}
@@ -266,7 +274,7 @@ export default function BodySection({ data, events, userId, onRefresh }) {
           category={latestSMM ? smmCategory(latestSMM.pct) : null}
           delta={latestSMM && prevSMM ? latestSMM.pct - prevSMM.pct : null}
           better="up"
-          sublabel={latestSMM ? `Of body weight (${latestSMM.lbs} lbs of muscle)` : 'Share of body weight'}
+          sublabel={latestSMM ? `Of body weight (${latestSMM.mass} ${mu} of muscle)` : 'Share of body weight'}
         />
         <MetricCard
           id={metricAnchor('body', 'visceral_fat')}

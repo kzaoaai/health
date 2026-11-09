@@ -194,12 +194,25 @@ app.post('/api/users', (req, res) => {
   res.json({ ok: true, user })
 })
 
+const UNIT_CHOICES = { weight: ['lbs', 'kg'], distance: ['mi', 'km'], temperature: ['f', 'c'], height: ['in', 'cm'] }
+
 app.patch('/api/users/:userId', requireUser, (req, res) => {
   const users = readUsers()
   const idx = users.findIndex(u => u.id === req.params.userId)
-  const { birth_year, height_inches, owners } = req.body
+  const { birth_year, height_inches, owners, units } = req.body
   if (birth_year != null) users[idx].birth_year = birth_year
   if (height_inches != null) users[idx].height_inches = height_inches
+  // Display units, per profile so every device shows the same. Values stay stored in lbs,
+  // miles and so on; the client converts.
+  if (units !== undefined) {
+    if (!units || typeof units !== 'object' || Array.isArray(units)) return res.status(400).json({ error: 'units must be an object' })
+    const next = { ...(users[idx].units ?? {}) }
+    for (const [k, v] of Object.entries(units)) {
+      if (!UNIT_CHOICES[k]?.includes(v)) return res.status(400).json({ error: `units.${k} must be one of: ${(UNIT_CHOICES[k] ?? []).join(', ') || '(no such setting)'}` })
+      next[k] = v
+    }
+    users[idx].units = next
+  }
   // Share a profile with another login, or hand it over. Only an owner gets
   // here (requireUser), and the list may not be emptied, which would orphan it.
   if (owners !== undefined) {
@@ -787,9 +800,19 @@ function unitScale(metricName, units) {
   return 1
 }
 
-// Decimals a converted value is stored at — sleep hours derived from minutes need two.
+// HAE sends temperatures in the phone's unit. These two are stored in the unit their names
+// say: a phone set to Fahrenheit used to put 96–99 into wrist_temp_c.
+function toStoredValue(metricName, units, raw) {
+  const u = String(units ?? '').toLowerCase()
+  if (metricName === 'wrist_temp_c' && u.endsWith('f')) return (raw - 32) * 5 / 9
+  if (metricName === 'body_temp_f' && u.endsWith('c')) return raw * 9 / 5 + 32
+  return raw * unitScale(metricName, units)
+}
+
+// Decimals a converted value is stored at — sleep hours derived from minutes need two,
+// and so do temperatures, whose day-to-day changes are tenths of a degree.
 function roundValue(metricName, units, value) {
-  const factor = metricName?.includes('sleep') && units === 'min' ? 100 : 10
+  const factor = (metricName?.includes('sleep') && units === 'min') || metricName?.includes('temp') ? 100 : 10
   return Math.round(value * factor) / factor
 }
 
@@ -1031,7 +1054,7 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
         const acc = daily.get(key)
         // Scale per sample so a payload mixing units for one metric still accumulates
         // coherently; rounding happens once, at flush.
-        const value = raw * unitScale(metricName, units)
+        const value = toStoredValue(metricName, units, raw)
         acc.total += value
         acc.count++
         if (value > acc.max) acc.max = value
@@ -1511,7 +1534,10 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
 
   const nameLower = req.file.originalname?.toLowerCase() ?? ''
   const isCsv = nameLower.endsWith('.csv')
-  const isPng = nameLower.endsWith('.png')
+  // Photos of reports come as JPEG as often as PNG; both go to Claude as an image.
+  const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
+  const imageType = IMAGE_TYPES[path.extname(nameLower)] ?? null
+  const isImage = imageType != null
 
   // ── 0. Duplicate check ────────────────────────────────────
   const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex')
@@ -1522,7 +1548,7 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
   }
 
   // ── 0b. Persist the uploaded file to disk ─────────────────
-  const ext = path.extname(req.file.originalname || '') || (isCsv ? '.csv' : isPng ? '.png' : '.pdf')
+  const ext = path.extname(req.file.originalname || '') || (isCsv ? '.csv' : isImage ? '.png' : '.pdf')
   // Per-user directory — see labPdfDir(). The DB keeps the bare basename, so
   // resolveLabPdfPath() is what maps a row to a file in either layout.
   const storedFilename = `${fileHash}${ext}`
@@ -1539,9 +1565,9 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
     const inUse = `Marker names already in use: ${labMarkerNames(db0).sort().join(', ')}.`
     const userContent = isCsv
       ? [{ type: 'text', text: `Extract all health metrics from this CSV health report and return only the JSON. ${inUse}\n\n${req.file.buffer.toString('utf8')}` }]
-      : isPng
+      : isImage
         ? [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: req.file.buffer.toString('base64') } },
+          { type: 'image', source: { type: 'base64', media_type: imageType, data: req.file.buffer.toString('base64') } },
           { type: 'text', text: `Extract all health metrics from this health report image and return only the JSON. ${inUse}` },
         ]
         : [
@@ -1585,6 +1611,8 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
     }
   } catch (err) {
     console.error('[labs-pdf] Claude parse error:', err)
+    // Nothing will ever point at the stored upload, so take it back out.
+    try { fs.unlinkSync(path.join(userPdfsDir, storedFilename)) } catch {}
     return res.status(500).json({ error: `AI parsing failed: ${err.message}` })
   }
 

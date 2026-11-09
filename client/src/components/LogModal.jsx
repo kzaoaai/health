@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { useUnits } from '../context/UserContext'
+import { massToLbs } from '../unitPrefs'
 
 function today() {
   return new Date().toISOString().split('T')[0]
@@ -22,18 +24,21 @@ function Field({ label, sublabel, children }) {
 }
 
 function BodyForm({ heightInches, onSubmit, onClose, loading }) {
+  const units = useUnits()
   const [date, setDate] = useState(today())
   const [weight, setWeight] = useState('')
   const [smm, setSmm] = useState('')
   const [vf, setVf] = useState('')
   const [notes, setNotes] = useState('')
 
-  const bmi = calcBMI(parseFloat(weight), heightInches)
+  // Typed in the profile's unit, stored in lbs.
+  const weightLbs = weight ? massToLbs(parseFloat(weight), units) : NaN
+  const bmi = calcBMI(weightLbs, heightInches)
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!weight) return
-    onSubmit({ date, weight: parseFloat(weight), bmi: bmi ? parseFloat(bmi) : undefined, skeletal_muscle_mass: smm ? parseFloat(smm) : undefined, visceral_fat: vf ? parseFloat(vf) : undefined, notes: notes || undefined })
+    onSubmit({ date, weight: weightLbs, bmi: bmi ? parseFloat(bmi) : undefined, skeletal_muscle_mass: smm ? massToLbs(parseFloat(smm), units) : undefined, visceral_fat: vf ? parseFloat(vf) : undefined, notes: notes || undefined })
   }
 
   return (
@@ -42,8 +47,8 @@ function BodyForm({ heightInches, onSubmit, onClose, loading }) {
         <Field label="Date">
           <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
         </Field>
-        <Field label="Weight" sublabel="(lbs)">
-          <input type="number" step="0.1" placeholder="182.4" value={weight} onChange={e => setWeight(e.target.value)} required />
+        <Field label="Weight" sublabel={`(${units.weight})`}>
+          <input type="number" step="0.1" placeholder={units.weight === 'kg' ? '82.7' : '182.4'} value={weight} onChange={e => setWeight(e.target.value)} required />
         </Field>
       </div>
 
@@ -55,8 +60,8 @@ function BodyForm({ heightInches, onSubmit, onClose, loading }) {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Skeletal Muscle Mass" sublabel="(%) — optional">
-          <input type="number" step="0.1" placeholder="42.6" value={smm} onChange={e => setSmm(e.target.value)} />
+        <Field label="Skeletal Muscle Mass" sublabel={`(${units.weight}) — optional`}>
+          <input type="number" step="0.1" placeholder={units.weight === 'kg' ? '35.4' : '78.0'} value={smm} onChange={e => setSmm(e.target.value)} />
         </Field>
         <Field label="Visceral Fat" sublabel="(1–20) — optional">
           <input type="number" step="1" min="1" max="20" placeholder="9" value={vf} onChange={e => setVf(e.target.value)} />

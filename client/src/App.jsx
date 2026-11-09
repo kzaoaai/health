@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { UserProvider, useUser } from './context/UserContext'
+import { UserProvider, useUser, useUnits } from './context/UserContext'
 import { api } from './api'
 import Sidebar from './components/Sidebar'
 import BodySection from './components/BodySection'
@@ -233,9 +233,10 @@ function Dashboard() {
     loadAll({ showLoading: true })
   }, [currentUserId, loadAll])
 
+  const units = useUnits()
   const searchIndex = useMemo(
-    () => buildIndex({ body: bodyData, sleep: sleepData, exercise: exerciseData, heartrate: heartrateData, appleHealth: appleHealthData, blood: bloodData }, hiddenSections),
-    [bodyData, sleepData, exerciseData, heartrateData, appleHealthData, bloodData, hiddenSections],
+    () => buildIndex({ body: bodyData, sleep: sleepData, exercise: exerciseData, heartrate: heartrateData, appleHealth: appleHealthData, blood: bloodData }, hiddenSections, units),
+    [bodyData, sleepData, exerciseData, heartrateData, appleHealthData, bloodData, hiddenSections, units],
   )
 
   // ⌘K / Ctrl+K anywhere, or "/" when not typing in a field, opens the search.

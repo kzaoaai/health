@@ -136,6 +136,11 @@ export function getDb(userId) {
   // UI to repair it. NULL for hardcoded rows and for pre-existing imports.
   try { db.exec(`ALTER TABLE marker_configs ADD COLUMN lab_report_id INTEGER REFERENCES lab_reports(id) ON DELETE SET NULL`) } catch {}
 
+  // Sleeping wrist temperature from a phone set to Fahrenheit was stored as sent (96–99)
+  // under its Celsius name. No wrist reads 50 °C, so this converts those rows once and
+  // leaves converted ones alone.
+  db.exec(`UPDATE metrics SET value = round((value - 32) * 5.0 / 9, 2) WHERE metric = 'wrist_temp_c' AND value > 50`)
+
   // Backfill file_hash for any existing reports that don't have one yet
   const unhashed = db.prepare(`SELECT id, filename FROM lab_reports WHERE file_hash IS NULL`).all()
   if (unhashed.length) {

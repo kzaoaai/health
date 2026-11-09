@@ -25,6 +25,7 @@ const data = {
 const index = buildIndex(data, new Set(['dna']))
 const top = (q, n = 1) => search(index, q).slice(0, n).map(r => r.id)
 
+
 test('a section name finds the section first', () => {
   assert.deepEqual(top('body'), ['section:body'])
   assert.deepEqual(top('Heart rate'), ['section:heartrate'])
@@ -76,6 +77,21 @@ test('markers with no data are not listed, and hidden sections are flagged', () 
 
 test('an empty query lists the sections', () => {
   assert.deepEqual(search(index, '  ').map(r => r.kind), Array(10).fill('section'))
+})
+
+test('the out-of-range filter lists what the dashboard marks red, and narrows a query', () => {
+  const out = search(index, '', { outOfRange: true }).map(r => r.id)
+  assert.deepEqual(out, ['metric:labs:ldl'])                       // total cholesterol has no range here
+  assert.deepEqual(search(index, 'ldl', { outOfRange: true }).map(r => r.id), ['metric:labs:ldl'])
+  assert.equal(search(index, 'hdl', { outOfRange: true }).length, 0)
+  const obese = buildIndex({ body: { entries: [{ date: '2026-01-01', bmi: 31.2 }] } })
+  assert.deepEqual(search(obese, '', { outOfRange: true }).map(r => r.id), ['card:body:bmi'])
+})
+
+test('values follow the profile\'s units', () => {
+  const metric = buildIndex(data, new Set(), { weight: 'kg', distance: 'km', temperature: 'c', height: 'cm' })
+  assert.deepEqual(search(metric, 'weight')[0].value, { text: '81.4', unit: 'kg', date: '2026-02-01', status: null })
+  assert.equal(search(metric, 'hdl')[0].value.unit, 'mg/dL')     // lab units are not affected
 })
 
 test('names and values read the way a lab report writes them', () => {

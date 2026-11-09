@@ -128,8 +128,8 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
   }
 
   async function processFile(file) {
-    if (!file || (!file.name.toLowerCase().endsWith('.pdf') && !file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.png'))) {
-      setError('Please upload a PDF, CSV, or PNG file.')
+    if (!file || !/\.(pdf|csv|png|jpe?g|webp)$/i.test(file.name)) {
+      setError('Please upload a PDF, CSV, or an image (PNG, JPEG, WebP).')
       return
     }
     setError(null)
@@ -254,7 +254,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
               : 'border-[#243450] bg-[#131d2e] hover:border-[#374d6c] hover:bg-[#111827]'
             }`}
         >
-          <input ref={fileInputRef} type="file" multiple accept=".pdf,.PDF,.csv,.CSV,.png,.PNG,.zip,.ZIP,.json,.JSON" className="hidden" onChange={handleFileInput} />
+          <input ref={fileInputRef} type="file" multiple accept=".pdf,.PDF,.csv,.CSV,.png,.PNG,.jpg,.JPG,.jpeg,.JPEG,.webp,.WEBP,.zip,.ZIP,.json,.JSON" className="hidden" onChange={handleFileInput} />
           <div className="w-12 h-12 rounded-xl bg-[#243450] flex items-center justify-center">
             <svg className="w-6 h-6 text-[#475569]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />

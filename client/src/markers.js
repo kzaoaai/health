@@ -31,7 +31,7 @@ export const LAB_CATEGORIES = [
       'oxidative_stress_adduct', 'dna_fragmentation_index', 'high_dna_stainability',
       'semen_volume', 'semen_ph', 'sperm_progressive_motility', 'sperm_non_progressive_motility',
       'sperm_non_motile', 'total_sperm_motility', 'sperm_morphology', 'sperm_count_per_ml',
-      'total_sperm_count', 'total_progressive_sperm_count',
+      'total_sperm_count', 'total_progressive_sperm_count', 'sperm_vitality', 'sperm_anomaly_index',
     ],
   },
   {
@@ -72,7 +72,15 @@ const WORDS = {
   ck: 'CK', inr: 'INR', hrv: 'HRV', vo2: 'VO2', bmi: 'BMI', bmr: 'BMR', bp: 'BP', um: 'µm',
 }
 
+// Metrics whose stored names carry a unit the display may not use.
+const NAMES = {
+  distance_miles: 'Walking + Running Distance',
+  body_temp_f: 'Body Temperature',
+  wrist_temp_c: 'Sleeping Wrist Temperature',
+}
+
 export function markerTitle(key) {
+  if (NAMES[key]) return NAMES[key]
   return String(key)
     .split('_')
     .filter(Boolean)

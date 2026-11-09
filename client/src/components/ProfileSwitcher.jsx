@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { useUser } from '../context/UserContext'
+import { useUser, useUnits } from '../context/UserContext'
+import { cmToInches } from '../unitPrefs'
 import { api } from '../api'
 
 const PALETTE = [
@@ -24,18 +25,23 @@ function AddMemberForm({ onAdd, onCancel }) {
   const [color, setColor]             = useState(PALETTE[1])
   const [heightFt, setHeightFt]       = useState('')
   const [heightIn, setHeightIn]       = useState('')
+  const [heightCm, setHeightCm]       = useState('')
   const [birthYear, setBirthYear]     = useState('')
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
   const { addUser, switchUser }       = useUser()
+  // In the current profile's height unit; stored in inches either way.
+  const metric = useUnits().height === 'cm'
 
   const initials = name.trim()
     ? name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2)
     : '??'
 
-  const height_inches = heightFt || heightIn
-    ? (parseInt(heightFt || 0) * 12) + parseInt(heightIn || 0)
-    : null
+  const height_inches = metric
+    ? (heightCm ? cmToInches(parseFloat(heightCm)) : null)
+    : heightFt || heightIn
+      ? (parseInt(heightFt || 0) * 12) + parseInt(heightIn || 0)
+      : null
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -91,16 +97,26 @@ function AddMemberForm({ onAdd, onCancel }) {
 
       {/* Height + birth year */}
       <div className="flex gap-2 mb-3 items-center">
-        <input
-          type="number" min="0" max="8" placeholder="ft"
-          value={heightFt} onChange={e => setHeightFt(e.target.value)}
-          className="w-14 bg-[#0d1520] border border-[#243450] text-white text-sm rounded-lg px-2 py-1.5 focus:border-[#7c3aed] outline-none"
-        />
-        <input
-          type="number" min="0" max="11" placeholder="in"
-          value={heightIn} onChange={e => setHeightIn(e.target.value)}
-          className="w-14 bg-[#0d1520] border border-[#243450] text-white text-sm rounded-lg px-2 py-1.5 focus:border-[#7c3aed] outline-none"
-        />
+        {metric ? (
+          <input
+            type="number" min="50" max="250" placeholder="cm"
+            value={heightCm} onChange={e => setHeightCm(e.target.value)}
+            className="w-20 bg-[#0d1520] border border-[#243450] text-white text-sm rounded-lg px-2 py-1.5 focus:border-[#7c3aed] outline-none"
+          />
+        ) : (
+          <>
+            <input
+              type="number" min="0" max="8" placeholder="ft"
+              value={heightFt} onChange={e => setHeightFt(e.target.value)}
+              className="w-14 bg-[#0d1520] border border-[#243450] text-white text-sm rounded-lg px-2 py-1.5 focus:border-[#7c3aed] outline-none"
+            />
+            <input
+              type="number" min="0" max="11" placeholder="in"
+              value={heightIn} onChange={e => setHeightIn(e.target.value)}
+              className="w-14 bg-[#0d1520] border border-[#243450] text-white text-sm rounded-lg px-2 py-1.5 focus:border-[#7c3aed] outline-none"
+            />
+          </>
+        )}
         <input
           type="number" min="1920" max={new Date().getFullYear() - 10} placeholder="year"
           value={birthYear} onChange={e => setBirthYear(e.target.value)}

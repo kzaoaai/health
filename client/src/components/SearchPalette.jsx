@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { search } from '../search'
+import { search, isOutOfRange } from '../search'
 
 function fmtDate(date) {
   if (!date) return ''
@@ -14,11 +14,14 @@ const STATUS_CLASS = { out: 'text-red-400', normal: 'text-amber-400', optimal: '
 // metrics. Opened from the sidebar, the mobile top bar, ⌘K / Ctrl+K or "/".
 export default function SearchPalette({ index, onSelect, onClose }) {
   const [query, setQuery] = useState('')
+  const [outOfRange, setOutOfRange] = useState(false)
   const [active, setActive] = useState(0)
-  const results = useMemo(() => search(index, query), [index, query])
+  const results = useMemo(() => search(index, query, { outOfRange }), [index, query, outOfRange])
+  const outCount = useMemo(() => index.filter(isOutOfRange).length, [index])
   const listRef = useRef(null)
+  const inputRef = useRef(null)
 
-  useEffect(() => { setActive(0) }, [query])
+  useEffect(() => { setActive(0) }, [query, outOfRange])
   useEffect(() => {
     listRef.current?.querySelector(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [active])
@@ -40,6 +43,7 @@ export default function SearchPalette({ index, onSelect, onClose }) {
             <line x1="16.5" y1="16.5" x2="22" y2="22" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <input
+            ref={inputRef}
             autoFocus
             type="text"
             value={query}
@@ -59,9 +63,25 @@ export default function SearchPalette({ index, onSelect, onClose }) {
           <button onClick={onClose} className="text-[10px] text-[#475569] hover:text-[#94a3b8] border border-[#243450] rounded px-1.5 py-0.5 shrink-0">esc</button>
         </div>
 
+        {/* Filters: narrow the results (or, with no query, list everything that matches) */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#243450]">
+          <button
+            onClick={() => { setOutOfRange(o => !o); inputRef.current?.focus() }}
+            disabled={outCount === 0 && !outOfRange}
+            aria-pressed={outOfRange}
+            className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors disabled:opacity-40 ${outOfRange
+              ? 'border-red-700 bg-red-950 text-red-400'
+              : 'border-[#243450] text-[#64748b] hover:text-[#94a3b8] hover:border-[#374d6c]'}`}
+          >
+            Out of range · {outCount}
+          </button>
+        </div>
+
         <ul id="search-results" ref={listRef} role="listbox" className="max-h-[60vh] overflow-y-auto py-2">
           {results.length === 0 ? (
-            <li className="px-4 py-8 text-center text-[#475569] text-sm">Nothing matches “{query}”</li>
+            <li className="px-4 py-8 text-center text-[#475569] text-sm">
+              {outOfRange && !query ? 'Nothing is out of range' : `Nothing${outOfRange ? ' out of range' : ''} matches “${query}”`}
+            </li>
           ) : results.map((r, i) => (
             <li
               key={r.id}
@@ -96,7 +116,7 @@ export default function SearchPalette({ index, onSelect, onClose }) {
 
         <div className="hidden md:flex gap-4 px-4 py-2 border-t border-[#243450] text-[10px] text-[#475569]">
           <span>↑↓ move</span><span>↵ open</span><span>esc close</span>
-          <span className="ml-auto">{query ? `${results.length} result${results.length === 1 ? '' : 's'}` : 'Sections'}</span>
+          <span className="ml-auto">{query || outOfRange ? `${results.length} result${results.length === 1 ? '' : 's'}` : 'Sections'}</span>
         </div>
       </div>
     </div>

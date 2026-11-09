@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react'
+import { useUnits } from '../context/UserContext'
+import { convertEntries, displayUnit } from '../unitPrefs'
 import RawDataModal from './RawDataModal'
 import { markerTitle } from '../markers'
 import { metricAnchor } from '../sections'
@@ -70,32 +72,35 @@ function seriesFor(entries, key, cutoff, bucket) {
     .map(([date, { total, n }]) => ({ date, value: total / n }))
 }
 
-function MiniTooltip({ active, payload, bucket }) {
+function MiniTooltip({ active, payload, bucket, unit }) {
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload
   if (!d) return null
   return (
     <div className="bg-[#131d2e] border border-[#243450] rounded-lg px-3 py-2 shadow-2xl">
       <p className="text-[#64748b] text-[11px]">{fmtDate(d.date, bucket)}{bucket !== 'day' ? ' · average' : ''}</p>
-      <p className="text-white text-sm font-semibold tabular-nums">{fmtValue(d.value)}</p>
+      <p className="text-white text-sm font-semibold tabular-nums">{fmtValue(d.value)}{unit && <span className="text-[#64748b] text-xs font-normal ml-1">{unit}</span>}</p>
     </div>
   )
 }
 
-function MetricCard({ metric, series, bucket }) {
+function MetricCard({ metric, series, bucket, unit }) {
   return (
     <div id={metricAnchor('applehealth', metric.key)} className="bg-[#131d2e] border border-[#243450] rounded-2xl p-4 min-w-0">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-[#94a3b8] text-xs font-medium truncate" title={metric.key}>{toTitle(metric.key)}</p>
         <p className="text-[#475569] text-[10px] shrink-0">{fmtDate(metric.latest.date, 'day')}</p>
       </div>
-      <p className="text-white text-xl font-semibold mt-1 tabular-nums">{fmtValue(metric.latest.value)}</p>
+      <p className="text-white text-xl font-semibold mt-1 tabular-nums">
+        {fmtValue(metric.latest.value)}
+        {unit && <span className="text-[#475569] text-xs font-normal ml-1">{unit}</span>}
+      </p>
       {series.length > 1 ? (
         <ResponsiveContainer width="100%" height={64}>
           <AreaChart data={series} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
             <XAxis dataKey="date" hide />
             <YAxis hide domain={['auto', 'auto']} />
-            <Tooltip content={<MiniTooltip bucket={bucket} />} />
+            <Tooltip content={<MiniTooltip bucket={bucket} unit={unit} />} />
             <Area type="monotone" dataKey="value" stroke={COLOR} fill={COLOR} fillOpacity={0.12} strokeWidth={1.5} dot={false} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
@@ -111,7 +116,8 @@ function MetricCard({ metric, series, bucket }) {
 export default function AppleHealthSection({ data }) {
   const [range, setRange] = useState('3M')
   const [showRaw, setShowRaw] = useState(false)
-  const entries = data?.entries ?? []
+  const units = useUnits()
+  const entries = useMemo(() => convertEntries(data?.entries ?? [], units), [data, units])
   const days = RANGES.find(r => r.label === range)?.days ?? null
   const bucket = bucketOf(days)
 
@@ -176,7 +182,7 @@ export default function AppleHealthSection({ data }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {metrics.map(m => (
-            <MetricCard key={m.key} metric={m} series={seriesByKey[m.key] ?? []} bucket={bucket} />
+            <MetricCard key={m.key} metric={m} series={seriesByKey[m.key] ?? []} bucket={bucket} unit={displayUnit(m.key, units)} />
           ))}
         </div>
       )}

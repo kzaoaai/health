@@ -33,7 +33,7 @@ function formatDate(dateStr, days) {
 const EVENT_COLORS = { blood_draw: '#34d399', life_event: '#38bdf8', doctor_visit: '#fbbf24' }
 const EVENT_LABELS = { blood_draw: 'Blood draw', life_event: 'Life event', doctor_visit: 'Doctor visit' }
 
-function CustomTooltip({ active, payload, events = [] }) {
+function CustomTooltip({ active, payload, events = [], unit = 'lbs' }) {
   if (!active) return null
   const d = payload?.[0]?.payload
   if (!d?.date) return null
@@ -49,7 +49,7 @@ function CustomTooltip({ active, payload, events = [] }) {
         <div key={p.dataKey} className="flex items-center gap-2 text-sm">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
           <span style={{ color: p.color }} className="font-semibold">{p.value}</span>
-          <span className="text-[#64748b] text-xs">lbs</span>
+          <span className="text-[#64748b] text-xs">{unit}</span>
           <span className="text-[#475569] text-xs">{SOURCE_META[p.dataKey]?.label}</span>
         </div>
       ))}
@@ -69,7 +69,7 @@ function CustomTooltip({ active, payload, events = [] }) {
   )
 }
 
-export default function WeightChart({ entries = [], weightBySource = {}, events = [] }) {
+export default function WeightChart({ entries = [], weightBySource = {}, events = [], unit = 'lbs' }) {
   const [range, setRange] = useState('1M')
   const activeDays = RANGES.find(r => r.label === range)?.days
 
@@ -135,7 +135,7 @@ export default function WeightChart({ entries = [], weightBySource = {}, events 
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-white font-semibold text-base">Weight</h3>
-          <p className="text-[#475569] text-xs mt-0.5">lbs over time</p>
+          <p className="text-[#475569] text-xs mt-0.5">{unit} over time</p>
         </div>
         <div className="flex items-center gap-1 bg-[#0d1520] border border-[#243450] rounded-lg p-1">
           {RANGES.map(r => (
@@ -156,10 +156,10 @@ export default function WeightChart({ entries = [], weightBySource = {}, events 
       {latestWeight != null && (
         <div className="flex items-end gap-3 mb-6">
           <span className="text-4xl font-bold text-white">{latestWeight}</span>
-          <span className="text-[#475569] text-sm mb-1">lbs</span>
+          <span className="text-[#475569] text-sm mb-1">{unit}</span>
           {delta != null && Number(delta) !== 0 && (
             <span className={`text-sm mb-1 font-medium ${delta < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {delta < 0 ? '↓' : '↑'} {Math.abs(delta)} lbs
+              {delta < 0 ? '↓' : '↑'} {Math.abs(delta)} {unit}
             </span>
           )}
         </div>
@@ -194,7 +194,7 @@ export default function WeightChart({ entries = [], weightBySource = {}, events 
             tickCount={5}
           />
 
-          <Tooltip content={<CustomTooltip events={eventDates} />} filterNull={false} />
+          <Tooltip content={<CustomTooltip events={eventDates} unit={unit} />} filterNull={false} />
 
           {eventDates.map((ev, i) => {
             const stroke = ev.type === 'blood_draw' ? '#34d399'

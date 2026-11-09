@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { unitsOf } from '../unitPrefs'
 
 const UserContext = createContext(null)
 
@@ -113,3 +114,10 @@ export function UserProvider({ children }) {
 }
 
 export const useUser = () => useContext(UserContext)
+
+// The active profile's display units (unitPrefs.js), with defaults filled in.
+export function useUnits() {
+  const { currentUser } = useContext(UserContext)
+  const stored = currentUser?.units
+  return useMemo(() => unitsOf({ units: stored }), [JSON.stringify(stored ?? {})])
+}

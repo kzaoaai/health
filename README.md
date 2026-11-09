@@ -42,11 +42,12 @@
 - **Track protocols:** supplements and medications over time.
 - **Optional OCR** scanning of bloodwork.
 - **REST API** to sync with external services.
-- **Search** every section, metric and lab marker (⌘K or `/`): "body", "weight", "heart rate", "HDL", "good cholesterol".
+- **Search** every section, metric and lab marker (⌘K or `/`): "body", "weight", "heart rate", "HDL", "good cholesterol"; one tap lists everything out of range.
+- **Units** per profile: kg or lbs, km or miles, °C or °F, cm or ft/in.
 
 ## What it does
 
-- **Ingests health data from anywhere.** Live sync from Apple Health via the [Health Auto Export](https://www.healthexportapp.com/) app, plus manual upload of PDFs, PNGs, and CSVs (lab panels, InBody scans, DNA reports). AI-powered OCR (via the Anthropic API) reads scanned lab reports and PDFs and extracts structured values automatically.
+- **Ingests health data from anywhere.** Live sync from Apple Health via the [Health Auto Export](https://www.healthexportapp.com/) app, plus manual upload of PDFs, photos (PNG, JPEG, WebP) and CSVs (lab panels, InBody scans, DNA reports). AI-powered OCR (via the Anthropic API) reads scanned lab reports and PDFs and extracts structured values automatically.
 - **Tracks the full picture, not just weight.** Body composition (weight, skeletal muscle mass, body fat %), sleep (per-source, per-stage breakdown), exercise and heart-rate zones, blood/lab markers with reference ranges, DNA traits, life events, and supplement/medication protocols.
 - **Multi-user.** Each family member gets their own isolated profile and database, switchable from the sidebar.
 - **Self-hosted.** One Docker image, one data volume. Your data never leaves your own infrastructure.
