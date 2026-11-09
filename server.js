@@ -9,9 +9,9 @@ import { fileURLToPath } from 'url'
 import multer from 'multer'
 
 import Anthropic from '@anthropic-ai/sdk'
-import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUserDna, DATA_DIR } from './db.js'
+import { getDb, readUsers, writeUsers, archiveUserDb, archiveUserPdfs, archiveUserDna, DATA_DIR, listRetainedArtifacts, ARCHIVE_RETENTION_DAYS } from './db.js'
 import { loadAuthConfig, gate, canSee, unownedProfiles, parseOwners } from './auth.js'
-import { parseTimeToHours, isNight, nightDate, nightSpans } from './sleep.js'
+import { parseTimeToHours, isNight, nightDate, nightSpans, nightHour, isClippedTail } from './sleep.js'
 import { labResultsFrom } from './fhir.js'
 import { convertReport } from './units.js'
 
@@ -602,16 +602,17 @@ app.get('/api/:userId/sleep', requireUser, (req, res) => {
   // Multiple sources (e.g. Apple Watch + Pillow) each log their own bedtime/wake_time
   // for the same night. pivotMetrics keeps whichever source's row synced most recently,
   // which flip-flops on every re-sync. Override with the earliest-recorded bedtime and
-  // latest-recorded wake_time across all of that night's sources instead.
-  const normBedtime = v => v < 12 ? v + 24 : v
+  // latest-recorded wake_time across all of that night's sources instead. Both compare
+  // through nightHour(): a raw `>` on wake_time let a source's evening wake (23.x) beat
+  // a real 07:00.
   const byDate = {}
   for (const entry of entries) byDate[entry.date] = entry
   for (const row of rows) {
     const entry = byDate[row.date]
-    if (row.metric === 'bedtime' && (entry.bedtime == null || normBedtime(row.value) < normBedtime(entry.bedtime))) {
+    if (row.metric === 'bedtime' && (entry.bedtime == null || nightHour(row.value) < nightHour(entry.bedtime))) {
       entry.bedtime = row.value
     }
-    if (row.metric === 'wake_time' && (entry.wake_time == null || row.value > entry.wake_time)) {
+    if (row.metric === 'wake_time' && (entry.wake_time == null || nightHour(row.value) > nightHour(entry.wake_time))) {
       entry.wake_time = row.value
     }
   }
@@ -946,11 +947,31 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
 
         // A night with no asleep time at all is not a night; skip it rather than writing a
         // row of zeros over a good one.
-        const nights = []
+        const candidates = []
         for (const night of byNight.values()) {
-          if (night.core + night.deep + night.rem + night.asleep > 0) nights.push(night)
+          if (night.core + night.deep + night.rem + night.asleep > 0) candidates.push(night)
           else stats.skipped++
         }
+
+        // A clipped re-sync (only the tail of a night already stored) keeps the stored
+        // night: it is neither cleared nor written. sleep.js has the rule.
+        const readNight = db.prepare(`SELECT metric, value FROM metrics WHERE date = ? AND source = ? AND metric IN ('sleep_hours', 'bedtime')`)
+        const keptDates = new Map()   // source -> dates whose stored night stays
+        const nights = candidates.filter(night => {
+          const stored = {}
+          for (const r of readNight.all(night.ownerDate, night.src)) stored[r.metric] = r.value
+          const incoming = { bedtime: parseTimeToHours(night.start), sleep_hours: night.core + night.deep + night.rem + night.asleep }
+          if (!isClippedTail(stored, incoming)) return true
+          console.log(new Date().toISOString(), '[sleep clipped]', JSON.stringify({
+            ownerDate: night.ownerDate, source: night.src, stored,
+            incoming: { bedtime: Math.round(incoming.bedtime * 100) / 100, sleep_hours: Math.round(incoming.sleep_hours * 100) / 100 },
+            verdict: 'tail of a stored night, not longer: kept the stored night',
+          }))
+          if (!keptDates.has(night.src)) keptDates.set(night.src, [])
+          keptDates.get(night.src).push(night.ownerDate)
+          stats.skipped++
+          return false
+        })
 
         // The payload is the whole record for the nights it covers, so clear each source's
         // rows from its first night to its last before writing them again. Otherwise a night
@@ -958,9 +979,10 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
         // re-sending history after the 2026-11-09 night-date fix would have left those
         // behind. sleep.js explains why the span is taken from the nights.
         const SLEEP_ROWS = ['sleep_hours', 'deep_sleep_hours', 'rem_sleep_hours', 'core_sleep_hours', 'awake_hours', 'bedtime', 'wake_time']
-        const clearNights = db.prepare(`DELETE FROM metrics WHERE source = ? AND date BETWEEN ? AND ? AND metric IN (${SLEEP_ROWS.map(() => '?').join(',')})`)
         for (const [src, [first, last]] of nightSpans(nights)) {
-          stats.cleared = (stats.cleared ?? 0) + clearNights.run(src, first, last, ...SLEEP_ROWS).changes
+          const kept = keptDates.get(src) ?? []
+          const clearNights = db.prepare(`DELETE FROM metrics WHERE source = ? AND date BETWEEN ? AND ? AND metric IN (${SLEEP_ROWS.map(() => '?').join(',')})${kept.length ? ` AND date NOT IN (${kept.map(() => '?').join(',')})` : ''}`)
+          stats.cleared = (stats.cleared ?? 0) + clearNights.run(src, first, last, ...SLEEP_ROWS, ...kept).changes
         }
 
         for (const night of nights) {
@@ -2101,6 +2123,15 @@ tcp.listen(PORT, () => {
     console.log('[auth] the TCP port answers /healthz only; the dashboard is on the socket')
   } else {
     console.warn(`[auth] DEV_USER: every TCP request is treated as ${auth.devUser} (development only)`)
+  }
+
+  // Archives and backups are never removed automatically (db.js, Retention); name them
+  // at startup so they cannot sit on the volume unnoticed.
+  const retained = listRetainedArtifacts()
+  if (retained.length) {
+    const bytes = retained.reduce((n, r) => n + (r.bytes ?? 0), 0)
+    console.log(`[retention] ${retained.length} archived artifact(s), ${(bytes / 1048576).toFixed(1)} MB in files: kept ${ARCHIVE_RETENTION_DAYS} days, then delete by hand`)
+    for (const r of retained.filter(r => r.stale)) console.log(`[retention] past ${ARCHIVE_RETENTION_DAYS} days (${r.ageDays}d): ${r.name}`)
   }
 })
 

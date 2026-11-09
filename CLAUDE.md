@@ -35,7 +35,7 @@ The per-section endpoints are just filters over that one table, driven by consta
 
 Consequence: a new body/sleep/exercise/HR metric that isn't added to its section constant will silently surface under Labs instead, or under Apple Health if it came from Health Auto Export.
 
-`pivotMetrics()` flattens rows into one object per date. When several sources wrote the same metric on the same date, the highest `id` wins — which is why `GET /sleep` re-derives `bedtime` (earliest) and `wake_time` (latest) across sources afterwards instead of trusting the pivot.
+`pivotMetrics()` flattens rows into one object per date. When several sources wrote the same metric on the same date, the highest `id` wins — which is why `GET /sleep` re-derives `bedtime` (earliest) and `wake_time` (latest) across sources afterwards instead of trusting the pivot, comparing both on `nightHour()`'s axis (from 18:00 on, then past midnight up to 18:00 the next day).
 
 ### Per-user databases
 
@@ -69,7 +69,7 @@ Target of the Health Auto Export iPhone app. `HAE_METRIC_MAP` renames HAE metric
 
 Sleep has three separate code paths in the same handler, and this is the most fragile part of the codebase:
 
-- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then `nightDate()` in `sleep.js` assigns each cluster an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day; a cluster starting at any other hour is a night only with ≥ 3 h asleep (`MIN_NIGHT_SLEEP_HOURS`), filed under the day it starts, and a nap (skipped) otherwise. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites. Before writing, each source's sleep rows (`SLEEP_ROWS`) are deleted from the first night the payload writes to the last (`nightSpans()` in `sleep.js`), so re-sending history replaces nights instead of leaving rows an older rule filed on another day. The span comes from the nights, never from the intervals' own dates, which would clear a night the payload does not carry.
+- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then `nightDate()` in `sleep.js` assigns each cluster an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day; a cluster starting at any other hour is a night only with ≥ 3 h asleep (`MIN_NIGHT_SLEEP_HOURS`), filed under the day it starts, and a nap (skipped) otherwise. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites. Before writing, each source's sleep rows (`SLEEP_ROWS`) are deleted from the first night the payload writes to the last (`nightSpans()` in `sleep.js`), so re-sending history replaces nights instead of leaving rows an older rule filed on another day. The span comes from the nights, never from the intervals' own dates, which would clear a night the payload does not carry. A night that is only the tail of one already stored (`isClippedTail()`: the stored night began in the evening, the incoming one after it, and is no longer) is neither cleared nor written, so an export window that opens after midnight cannot cut a night short.
 - **Compound nightly objects** (`totalSleep`/`deep`/`rem`/`core`, Summarize on) — nap filter only (`isNight()` in `sleep.js`, same rule); the point's own `date` is the night.
 - Plain `qty` points for everything else.
 
@@ -83,7 +83,13 @@ The section list lives in `client/src/sections.js` (sidebar, section observer an
 
 Display units are per profile (`units` in `users.json`, set from Settings, validated against `UNIT_CHOICES` in `server.js`): weight kg/lbs, distance km/mi, temperature °C/°F, height cm/ft-in. Storage never changes (body masses in lbs, distance in miles, `body_temp_f` in °F, `wrist_temp_c` in °C); `client/src/unitPrefs.js` converts for display (`convertEntries`, `displayMetric`) and back from forms (`massToLbs`, `cmToInches`), and `useUnits()` in `UserContext` gives a component the active profile's units. A new metric with a unit choice goes in `displayMetric`. Lab units are not affected.
 
+Every date the app stores is a local calendar day (`YYYY-MM-DD`): a night, a weigh-in, a lab draw. Make one with `toLocalDateStr()` / `localDateDaysAgo()` from `client/src/localDate.js`, never `toISOString().slice(0, 10)`, which is the UTC day and names the wrong one for hours each day away from UTC.
+
 Styling is a dark theme with literal hex values inline in components (`bg-[#131d2e]`, `text-[#94a3b8]`, accent `#7c3aed`). `tailwind.config.js` defines named colors but most components predate them — match the surrounding file rather than converting.
+
+## Retained archives
+
+Deleting a profile never unlinks anything: `db.js` renames its database to `<id>.db.deleted-<stamp>` (with `-wal`/`-shm`) and its `pdfs/<id>` and `dna/<id>` directories the same way. Those and any `*.bak-*` snapshot are kept 90 days and then deleted by hand (`ARCHIVE_RETENTION_DAYS`). There is deliberately no sweeper: the archive exists because one unconfirmed API call can delete a profile. The server lists them at startup (`[retention]`), naming any past 90 days.
 
 ## Deployment
 
@@ -95,12 +101,11 @@ A push to `main` runs `.github/workflows/ci.yml` (syntax check, `npm ci`, client
 
 ## Origin
 
-This app began as a fork of spuder/health and has since become its own app: features and fixes land here only, and nothing goes back upstream as a PR. The code is MIT-licensed from the original; `LICENSE` and its copyright line stay. The `upstream` remote is kept for reading: a fix there is ported by hand when it applies, since its commits no longer cherry-pick onto this code. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`.
+This app began as a fork of spuder/health and has since become its own app: features and fixes land here only, and nothing goes back upstream as a PR. The code is MIT-licensed from the original; `LICENSE` and its copyright line stay. It no longer follows upstream: nothing goes back and nothing is pulled from it. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`.
 
 The repo is public: no real health values, names, hostnames, addresses or emails in code, tests, fixtures or commit messages. Test data is made up.
 
 ### Open items
 
-- Upstream's open PR #9 (local-vs-UTC dates and the sleep night comparisons) may fix bugs this app inherited; not yet checked.
 - `README.md` still presents the original project: its badges, links and prebuilt image point at spuder/health.
 - Ideas, not yet asked for: lab results shown in SI units as a display setting, automatic lab-report import from a document archive, and links that open a given section or card.

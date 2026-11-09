@@ -6,6 +6,7 @@ import {
   ReferenceLine, ResponsiveContainer,
 } from 'recharts'
 import LogModal from './LogModal'
+import { toLocalDateStr } from '../localDate'
 
 const TARGET_MINUTES = 30   // daily exercise goal
 const TARGET_HR_MINS = 20   // daily zone-2+ goal
@@ -111,7 +112,7 @@ export default function ExerciseSection({ data, userId, onRefresh }) {
   const workoutsThisWeek = last7.reduce((s, e) => s + (e.workout_count ?? 0), 0)
   const workoutMinsThisWeek = last7.reduce((s, e) => s + (e.workout_minutes ?? 0), 0)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = toLocalDateStr()
   const todayEntry = entries.find(e => e.date === today)
   const todayMins = todayEntry?.ex_minutes ?? null
 

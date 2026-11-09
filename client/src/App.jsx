@@ -16,6 +16,7 @@ import SettingsSection from './components/SettingsSection'
 import ExportModal from './components/ExportModal'
 import SearchPalette from './components/SearchPalette'
 import { SECTIONS } from './sections'
+import { toLocalDateStr } from './localDate'
 import { buildIndex } from './search'
 
 const NAV_IDS = SECTIONS.map(s => s.id)
@@ -302,7 +303,7 @@ function Dashboard() {
       },
     })
     const link = document.createElement('a')
-    link.download = `health-${new Date().toISOString().slice(0, 10)}.png`
+    link.download = `health-${toLocalDateStr()}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
     setPrintSections(null)

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import RawDataModal from './RawDataModal'
+import { localDateDaysAgo } from '../localDate'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
@@ -266,9 +267,7 @@ export default function SleepSection({ data }) {
 
   const bedtimeDays = BEDTIME_RANGES.find(r => r.label === bedtimeRange)?.days ?? 30
   const { bedtimeData, btMax, btTicks } = useMemo(() => {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - bedtimeDays)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    const cutoffStr = localDateDaysAgo(bedtimeDays)
     const rows = withHours.filter(e => e.date >= cutoffStr && e.bedtime != null)
     const sorted = rows.map(e => toChart(e.bedtime)).sort((a, b) => a - b)
     const p90 = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.9)] : BT_FLOOR

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isNight, nightDate, nightSpans, parseTimeToHours } from '../sleep.js'
+import { isNight, nightDate, nightSpans, parseTimeToHours, nightHour, isClippedTail } from '../sleep.js'
 
 test('parseTimeToHours reads the clock time of an HAE timestamp', () => {
   assert.equal(parseTimeToHours('2026-07-08 23:10:30 -0600'), 23.175)
@@ -60,4 +60,22 @@ test('a payload clears only the days of the nights it writes', () => {
   assert.deepEqual(spans.get('Watch'), ['2026-03-11', '2026-03-13'])
   assert.deepEqual(spans.get('Ring'), ['2026-03-12', '2026-03-12'])
   assert.equal(nightSpans([]).size, 0)
+})
+
+test('nightHour puts a late wake after an early one, and an evening wake before both', () => {
+  assert.ok(nightHour(12.5) > nightHour(7))   // a 12:30 wake is later than 07:00
+  assert.ok(nightHour(23.5) < nightHour(7))   // an evening "wake" is not
+  assert.ok(nightHour(23) < nightHour(1))     // 23:00 bedtime is earlier than 01:00
+})
+
+test('the tail of a stored evening night is recognised and not written', () => {
+  const stored = { bedtime: 22.5, sleep_hours: 8 }
+  assert.equal(isClippedTail(stored, { bedtime: 0.17, sleep_hours: 6.33 }), true)
+  // A genuinely shorter night still starts in the evening, so it lands.
+  assert.equal(isClippedTail(stored, { bedtime: 23, sleep_hours: 5 }), false)
+  // A longer one lands too, as does anything with no stored night.
+  assert.equal(isClippedTail(stored, { bedtime: 0.5, sleep_hours: 9 }), false)
+  assert.equal(isClippedTail({}, { bedtime: 0.17, sleep_hours: 6 }), false)
+  // A stored night that began after midnight is never protected.
+  assert.equal(isClippedTail({ bedtime: 4.2, sleep_hours: 7 }, { bedtime: 6, sleep_hours: 4 }), false)
 })

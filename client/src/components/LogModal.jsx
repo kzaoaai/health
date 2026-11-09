@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useUnits } from '../context/UserContext'
 import { massToLbs } from '../unitPrefs'
+import { toLocalDateStr } from '../localDate'
 
 function today() {
-  return new Date().toISOString().split('T')[0]
+  return toLocalDateStr()
 }
 
 function calcBMI(weightLbs, heightInches) {

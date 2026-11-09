@@ -63,3 +63,26 @@ export function nightSpans(nights) {
   }
   return spans
 }
+
+// A clock hour on one axis for a night that crosses midnight, so sources can be compared
+// on "earlier" and "later": hours from 18:00 keep their value, earlier hours become
+// 24..42. The boundary is 18:00 rather than noon because a wake at 12:30 must still beat
+// one at 07:00. Since daytime sleeps count as nights, a bedtime can fall anywhere; two
+// sources only disagree across the boundary when they put the same sleep on either side
+// of 18:00, and then the later one is read as earlier.
+export function nightHour(v) {
+  return v < 18 ? v + 24 : v
+}
+
+// Whether an incoming night is only the tail of one already stored, as an export window
+// that opens after midnight delivers: the stored night began in the evening, the incoming
+// one did not, and the incoming one is no longer. Writing it would cut the night short and
+// move bedtime to the window's start. Deliberately narrow: a genuinely shorter night
+// still begins in the evening, so a correction still lands. stored/incoming are
+// { bedtime, sleep_hours } with bedtime in decimal hours.
+export function isClippedTail(stored, incoming) {
+  if (stored?.bedtime == null || stored.sleep_hours == null) return false
+  if (incoming?.bedtime == null || isNaN(incoming.bedtime)) return false
+  return nightHour(stored.bedtime) < 24 && nightHour(incoming.bedtime) >= 24 &&
+    incoming.sleep_hours <= stored.sleep_hours
+}
