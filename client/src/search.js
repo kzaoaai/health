@@ -13,11 +13,11 @@ const SECTION_BY_ID = Object.fromEntries(SECTIONS.map(s => [s.id, s]))
 // The cards the fixed sections draw. `key` is the metric whose newest value a result shows;
 // an `optional` card is listed only when there is a value to show.
 const CARDS = [
-  { section: 'body', key: 'weight', label: 'Weight', unit: 'lbs', aliases: ['body weight', 'lbs', 'kg'] },
-  { section: 'body', key: 'skeletal_muscle_mass', label: 'Muscle Mass', unit: 'lbs', aliases: ['skeletal muscle', 'smm', 'lean mass'] },
-  { section: 'body', key: 'body_fat_mass', label: 'Body Fat Mass', unit: 'lbs', aliases: ['fat'] },
-  { section: 'body', key: 'bmi', label: 'BMI', aliases: ['body mass index'] },
-  { section: 'body', key: 'visceral_fat', label: 'Visceral Fat', unit: 'level', aliases: ['belly fat', 'fat'] },
+  { section: 'body', key: 'weight', label: 'Weight', unit: 'lbs', optional: true, aliases: ['body weight', 'lbs', 'kg'] },
+  { section: 'body', key: 'skeletal_muscle_mass', label: 'Muscle Mass', unit: 'lbs', optional: true, aliases: ['skeletal muscle', 'smm', 'lean mass'] },
+  { section: 'body', key: 'body_fat_mass', label: 'Body Fat Mass', unit: 'lbs', optional: true, aliases: ['fat'] },
+  { section: 'body', key: 'bmi', label: 'BMI', optional: true, aliases: ['body mass index'] },
+  { section: 'body', key: 'visceral_fat', label: 'Visceral Fat', unit: 'level', optional: true, aliases: ['belly fat', 'fat'] },
   { section: 'body', key: 'body_fat', label: 'Body Fat', unit: '%', optional: true, aliases: ['body fat percentage', 'fat percentage', 'fat'] },
   { section: 'body', key: 'lean_mass', label: 'Lean Mass', unit: 'lbs', optional: true, aliases: ['lean body mass', 'fat free mass'] },
   { section: 'body', key: 'bmr', label: 'BMR', unit: 'kcal', optional: true, aliases: ['basal metabolic rate', 'metabolism'] },
@@ -32,8 +32,8 @@ const CARDS = [
   { section: 'exercise', key: 'exercise_minutes', label: 'Exercise Minutes', target: 'exercise-minutes', unit: 'min', aliases: ['active minutes', 'exercise time'] },
   { section: 'exercise', label: 'Heart Rate Zones', target: 'exercise-zones', aliases: ['hr zones', 'zone 2', 'z2', 'cardio zones'] },
   { section: 'heartrate', key: 'resting_heart_rate', label: 'Resting Heart Rate', unit: 'bpm', aliases: ['rhr', 'pulse', 'bpm'] },
-  { section: 'heartrate', key: 'hrv', label: 'HRV', unit: 'ms', aliases: ['heart rate variability', 'sdnn'] },
-  { section: 'heartrate', key: 'heart_rate', label: 'Day Average Heart Rate', unit: 'bpm', aliases: ['average heart rate', 'avg heart rate', 'mean heart rate'] },
+  { section: 'heartrate', key: 'hrv', label: 'HRV', unit: 'ms', optional: true, aliases: ['heart rate variability', 'sdnn'] },
+  { section: 'heartrate', key: 'heart_rate', label: 'Day Average Heart Rate', unit: 'bpm', optional: true, aliases: ['average heart rate', 'avg heart rate', 'mean heart rate'] },
 ]
 
 // Other names a lab marker goes by, as labs print them or people say them.
@@ -198,7 +198,13 @@ export function buildIndex(data = {}, hidden = new Set(), units = DEFAULT_UNITS)
 
   const sources = { body: body?.entries, sleep: sleep?.entries, exercise: exercise?.entries, heartrate: heartrate?.entries }
   for (const c of CARDS) {
-    const l = c.key ? latest(sources[c.section], c.key) : null
+    let l = c.key ? latest(sources[c.section], c.key) : null
+    // The Body section works BMI out from weight and height when none is recorded.
+    if (!l && c.key === 'bmi') {
+      const w = latest(body?.entries, 'weight')
+      const h = body?.height_inches
+      if (w && h) l = { value: Math.round((703 * w.value / (h * h)) * 10) / 10, date: w.date }
+    }
     if (c.optional && !l) continue
     out.push(entry({
       kind: 'card', section: c.section, key: c.key ?? null, label: c.label,

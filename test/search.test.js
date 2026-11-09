@@ -88,6 +88,14 @@ test('the out-of-range filter lists what the dashboard marks red, and narrows a 
   assert.deepEqual(search(obese, '', { outOfRange: true }).map(r => r.id), ['card:body:bmi'])
 })
 
+test('cards with nothing to show are not listed, and BMI comes from weight and height', () => {
+  const weightOnly = buildIndex({ body: { height_inches: 70, entries: [{ date: '2026-01-01', weight: 175 }] } })
+  const ids = weightOnly.map(e => e.id)
+  assert.ok(ids.includes('card:body:weight'))
+  for (const id of ['card:body:visceral_fat', 'card:body:skeletal_muscle_mass', 'card:heartrate:hrv']) assert.ok(!ids.includes(id), id)
+  assert.deepEqual(search(weightOnly, 'bmi')[0].value, { text: '25.1', unit: '', date: '2026-01-01', status: 'normal' })
+})
+
 test('values follow the profile\'s units', () => {
   const metric = buildIndex(data, new Set(), { weight: 'kg', distance: 'km', temperature: 'c', height: 'cm' })
   assert.deepEqual(search(metric, 'weight')[0].value, { text: '81.4', unit: 'kg', date: '2026-02-01', status: null })

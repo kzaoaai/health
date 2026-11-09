@@ -24,9 +24,12 @@ function filterByRange(points, days) {
   return points.filter(p => new Date(p.date) >= cutoff)
 }
 
-function formatDate(dateStr, days) {
+// spanDays: how many days the chart covers. Past about a year the day is dropped for the
+// year, or "All" reads Apr 3 … Nov 9 across nine years.
+function formatDate(dateStr, days, spanDays = days) {
   const d = new Date(dateStr + 'T00:00:00')
   if (days && days <= 7) return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  if (spanDays > 330) return `${d.toLocaleDateString('en-US', { month: 'short' })} '${String(d.getFullYear()).slice(2)}`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -119,6 +122,10 @@ export default function WeightChart({ entries = [], weightBySource = {}, events 
   const yMin = allValues.length ? Math.floor(Math.min(...allValues) - 3) : 160
   const yMax = allValues.length ? Math.ceil(Math.max(...allValues) + 3) : 200
 
+  const spanDays = chartData.length > 1
+    ? (new Date(chartData[chartData.length - 1].date) - new Date(chartData[0].date)) / 86400000
+    : 0
+
   // Latest weight: prefer apple_health recency, fall back to any source
   const preferredSource = activeSources.includes('apple_health') ? 'apple_health' : activeSources[0]
   const rangePoints = preferredSource ? filterByRange(effectiveBySource[preferredSource] ?? [], activeDays) : []
@@ -179,7 +186,7 @@ export default function WeightChart({ entries = [], weightBySource = {}, events 
 
           <XAxis
             dataKey="date"
-            tickFormatter={(d) => formatDate(d, activeDays)}
+            tickFormatter={(d) => formatDate(d, activeDays, spanDays)}
             tick={{ fill: '#475569', fontSize: 11 }}
             axisLine={false}
             tickLine={false}

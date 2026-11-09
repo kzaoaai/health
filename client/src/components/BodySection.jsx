@@ -217,6 +217,59 @@ export default function BodySection({ data, events, userId, onRefresh }) {
   const latestVF = getLatest(entries, 'visceral_fat')
   const prevVF = getPrev(entries, 'visceral_fat')
 
+  // BMI as recorded, else from the newest weight and the profile's height (both in lbs and
+  // inches as stored, so the display units don't matter).
+  const heightIn = data?.height_inches
+  const weightLbs = getLatest(data?.entries ?? [], 'weight')
+  const bmi = latestBMI ?? (weightLbs && heightIn ? Math.round((703 * weightLbs / (heightIn * heightIn)) * 10) / 10 : null)
+
+  // A card with nothing to show is left out rather than drawn empty.
+  const has = key => entries.some(e => e[key] != null)
+  const cards = [
+    has('weight') && <BodyTrendChart key="weight" title="Weight" dataKey="weight" unit={mu} color="#a78bfa" entries={entries} />,
+    has('skeletal_muscle_mass') && <BodyTrendChart key="smm" id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass" dataKey="skeletal_muscle_mass" unit={mu} color="#34d399" entries={entries} better="up" />,
+    has('body_fat_mass') && <BodyTrendChart key="bfm" id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass" dataKey="body_fat_mass" unit={mu} color="#f59e0b" entries={entries} />,
+    bmi != null && (
+      <MetricCard
+        key="bmi"
+        id={metricAnchor('body', 'bmi')}
+        label="BMI"
+        value={bmi}
+        unit=""
+        category={bmiCategory(bmi)}
+        delta={latestBMI && prevBMI ? latestBMI - prevBMI : null}
+        sublabel={latestBMI != null ? 'Body mass index' : 'From your latest weight and your profile height'}
+      />
+    ),
+    latestSMM && (
+      <MetricCard
+        key="smmpct"
+        label="Skeletal Muscle"
+        value={latestSMM.pct}
+        unit="%"
+        category={smmCategory(latestSMM.pct)}
+        delta={prevSMM ? latestSMM.pct - prevSMM.pct : null}
+        better="up"
+        sublabel={`Of body weight (${latestSMM.mass} ${mu} of muscle)`}
+      />
+    ),
+    latestVF != null && (
+      <MetricCard
+        key="vf"
+        id={metricAnchor('body', 'visceral_fat')}
+        label="Visceral Fat"
+        value={latestVF}
+        unit="level"
+        category={viscFatCategory(latestVF)}
+        delta={prevVF != null ? latestVF - prevVF : null}
+        sublabel="Scale 1–20"
+      />
+    ),
+    ...extras.map(m => (
+      <BodyTrendChart key={m.key} id={metricAnchor('body', m.key)} title={m.title} dataKey={m.key} unit={m.unit} color={m.color} entries={entries} better={m.better} />
+    )),
+  ].filter(Boolean)
+
   return (
     <section id="body" className="mb-16">
       {/* Section header */}
@@ -245,53 +298,20 @@ export default function BodySection({ data, events, userId, onRefresh }) {
       </div>
 
       {/* Weight chart */}
-      <div id={metricAnchor('body', 'weight')} className="rounded-2xl">
-        <WeightChart entries={entries} weightBySource={weightBySource} events={events?.entries ?? []} unit={mu} />
-      </div>
+      {has('weight') ? (
+        <div id={metricAnchor('body', 'weight')} className="rounded-2xl">
+          <WeightChart entries={entries} weightBySource={weightBySource} events={events?.entries ?? []} unit={mu} />
+        </div>
+      ) : cards.length === 0 && (
+        <div className="bg-[#131d2e] border border-[#243450] rounded-2xl flex items-center justify-center h-48 text-[#374d6c] text-sm">
+          No body data yet — log an entry or sync Apple Health
+        </div>
+      )}
 
-      {/* Trend charts: Weight · SMM · Body Fat Mass */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-        <BodyTrendChart title="Weight"          dataKey="weight"              unit={mu} color="#a78bfa" entries={entries} />
-        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit={mu} color="#34d399" entries={entries} better="up" />
-        <BodyTrendChart id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass"   dataKey="body_fat_mass"       unit={mu} color="#f59e0b" entries={entries} />
-      </div>
-
-      {/* Metric cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-        <MetricCard
-          id={metricAnchor('body', 'bmi')}
-          label="BMI"
-          value={latestBMI}
-          unit=""
-          category={latestBMI ? bmiCategory(latestBMI) : null}
-          delta={latestBMI && prevBMI ? latestBMI - prevBMI : null}
-          sublabel="Body mass index"
-        />
-        <MetricCard
-          label="Skeletal Muscle"
-          value={latestSMM?.pct ?? null}
-          unit="%"
-          category={latestSMM ? smmCategory(latestSMM.pct) : null}
-          delta={latestSMM && prevSMM ? latestSMM.pct - prevSMM.pct : null}
-          better="up"
-          sublabel={latestSMM ? `Of body weight (${latestSMM.mass} ${mu} of muscle)` : 'Share of body weight'}
-        />
-        <MetricCard
-          id={metricAnchor('body', 'visceral_fat')}
-          label="Visceral Fat"
-          value={latestVF}
-          unit="level"
-          category={latestVF ? viscFatCategory(latestVF) : null}
-          delta={latestVF && prevVF ? latestVF - prevVF : null}
-          sublabel="Scale 1–20"
-        />
-      </div>
-
-      {extras.length > 0 && (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 ${extras.length > 2 ? 'xl:grid-cols-4' : ''} gap-4 mt-4`}>
-          {extras.map(m => (
-            <BodyTrendChart key={m.key} id={metricAnchor('body', m.key)} title={m.title} dataKey={m.key} unit={m.unit} color={m.color} entries={entries} better={m.better} />
-          ))}
+      {/* Cards: only the ones with something to show */}
+      {cards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
+          {cards}
         </div>
       )}
 

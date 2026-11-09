@@ -87,11 +87,12 @@ function rhrColor(bpm) {
 
 function formatTick(dateStr, days) {
   const d = new Date(dateStr + 'T00:00:00')
-  if (days == null) return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  // "Nov '25", not "Nov 25", which reads as a day.
+  if (days == null) return `${d.toLocaleDateString('en-US', { month: 'short' })} '${String(d.getFullYear()).slice(2)}`
   if (days <= 7)  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   if (days <= 30) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   if (days <= 90) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  return `${d.toLocaleDateString('en-US', { month: 'short' })} '${String(d.getFullYear()).slice(2)}`
 }
 
 function StatCard({ label, value, unit = 'bpm', sublabel, color: fixedColor }) {
@@ -235,26 +236,27 @@ export default function HeartRateSection({ data }) {
         </div>
       </div>
 
-      {/* Stat cards: the newest reading of each, against its 30-day average */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      {/* Stat cards: the newest reading of each, against its 30-day average (HRV and the day
+          average only when there is any) */}
+      <div className={`grid grid-cols-1 ${['', 'sm:grid-cols-1', 'sm:grid-cols-2', 'sm:grid-cols-3'][1 + (withHrv.length > 0) + (withAvg.length > 0)]} gap-4 mb-4`}>
         <StatCard
           label="Resting"
           value={latest?.resting_heart_rate != null ? Math.round(latest.resting_heart_rate) : null}
           sublabel={latest ? `${shortDate(latest)}${avg30 != null ? ` · 30-day avg ${avg30}` : ''}` : 'No data yet'}
         />
-        <StatCard
+        {withHrv.length > 0 && <StatCard
           label="HRV"
           unit="ms"
           color={HRV_COLOR}
           value={latestHrv ? Math.round(latestHrv.hrv) : null}
-          sublabel={latestHrv ? `${shortDate(latestHrv)}${hrv30 != null ? ` · 30-day avg ${hrv30}` : ''}` : 'No data yet'}
-        />
-        <StatCard
+          sublabel={`${shortDate(latestHrv)}${hrv30 != null ? ` · 30-day avg ${hrv30}` : ''}`}
+        />}
+        {withAvg.length > 0 && <StatCard
           label="Day Average"
           color={AVG_COLOR}
           value={latestAvg ? Math.round(latestAvg.heart_rate) : null}
-          sublabel={latestAvg ? `${shortDate(latestAvg)}${dayAvg30 != null ? ` · 30-day avg ${dayAvg30}` : ''}` : 'No data yet'}
-        />
+          sublabel={`${shortDate(latestAvg)}${dayAvg30 != null ? ` · 30-day avg ${dayAvg30}` : ''}`}
+        />}
       </div>
 
       {/* Chart */}
@@ -338,24 +340,26 @@ export default function HeartRateSection({ data }) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-        <TrendCard
+      {(withHrv.length > 0 || withAvg.length > 0) && (
+      <div className={`grid grid-cols-1 ${withHrv.length > 0 && withAvg.length > 0 ? 'lg:grid-cols-2' : ''} gap-4 mt-4`}>
+        {withHrv.length > 0 && <TrendCard
           id={metricAnchor('heartrate', 'hrv')}
           title="Heart Rate Variability"
           subtitle={`SDNN in ms, higher is generally better${bucket !== 'day' ? `; ${bucket === 'week' ? 'weekly' : 'monthly'} averages` : ''}`}
           dataKey="hrv" unit="ms" color={HRV_COLOR}
           series={hrvSeries} bucket={bucket} activeDays={activeDays} rangeKey={range}
           empty="No HRV data in this range"
-        />
-        <TrendCard
+        />}
+        {withAvg.length > 0 && <TrendCard
           id={metricAnchor('heartrate', 'heart_rate')}
           title="Day Average"
           subtitle={`Mean of the day's readings in bpm, workouts included${bucket !== 'day' ? `; ${bucket === 'week' ? 'weekly' : 'monthly'} averages` : ''}`}
           dataKey="heart_rate" unit="bpm" color={AVG_COLOR}
           series={avgSeries} bucket={bucket} activeDays={activeDays} rangeKey={range}
           empty="No heart rate data in this range"
-        />
+        />}
       </div>
+      )}
       {showRaw && <RawDataModal label="heart rate" data={data} onClose={() => setShowRaw(false)} />}
     </section>
   )
