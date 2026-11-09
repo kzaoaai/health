@@ -17,6 +17,10 @@ const CARDS = [
   { section: 'body', key: 'body_fat_mass', label: 'Body Fat Mass', unit: 'lbs', aliases: ['fat'] },
   { section: 'body', key: 'bmi', label: 'BMI', aliases: ['body mass index'] },
   { section: 'body', key: 'visceral_fat', label: 'Visceral Fat', unit: 'level', aliases: ['belly fat', 'fat'] },
+  { section: 'body', key: 'body_fat', label: 'Body Fat', unit: '%', optional: true, aliases: ['body fat percentage', 'fat percentage', 'fat'] },
+  { section: 'body', key: 'lean_mass', label: 'Lean Mass', unit: 'lbs', optional: true, aliases: ['lean body mass', 'fat free mass'] },
+  { section: 'body', key: 'bmr', label: 'BMR', unit: 'kcal', optional: true, aliases: ['basal metabolic rate', 'metabolism'] },
+  { section: 'body', key: 'total_body_water', label: 'Body Water', unit: 'L', optional: true, aliases: ['total body water', 'hydration', 'tbw'] },
   { section: 'sleep', key: 'sleep_hours', label: 'Total Sleep', target: 'sleep-night', aliases: ['sleep duration', 'hours slept', 'asleep'] },
   { section: 'sleep', key: 'deep_sleep_hours', label: 'Deep Sleep', target: 'sleep-night', aliases: ['sleep stages'] },
   { section: 'sleep', key: 'rem_sleep_hours', label: 'REM Sleep', target: 'sleep-night', aliases: ['sleep stages', 'dreams'] },
@@ -26,8 +30,9 @@ const CARDS = [
   { section: 'exercise', label: 'Workouts This Week', target: 'exercise-stats', aliases: ['sessions', 'workouts today'] },
   { section: 'exercise', key: 'exercise_minutes', label: 'Exercise Minutes', target: 'exercise-minutes', unit: 'min', aliases: ['active minutes', 'exercise time'] },
   { section: 'exercise', label: 'Heart Rate Zones', target: 'exercise-zones', aliases: ['hr zones', 'zone 2', 'z2', 'cardio zones'] },
-  { section: 'heartrate', key: 'resting_heart_rate', label: 'Resting Heart Rate', target: 'heartrate-chart', unit: 'bpm', aliases: ['rhr', 'pulse', 'bpm'] },
-  { section: 'heartrate', key: 'hrv', label: 'HRV', target: 'heartrate-chart', unit: 'ms', optional: true, aliases: ['heart rate variability', 'sdnn'] },
+  { section: 'heartrate', key: 'resting_heart_rate', label: 'Resting Heart Rate', unit: 'bpm', aliases: ['rhr', 'pulse', 'bpm'] },
+  { section: 'heartrate', key: 'hrv', label: 'HRV', unit: 'ms', aliases: ['heart rate variability', 'sdnn'] },
+  { section: 'heartrate', key: 'heart_rate', label: 'Day Average Heart Rate', unit: 'bpm', aliases: ['average heart rate', 'avg heart rate', 'mean heart rate'] },
 ]
 
 // Other names a lab marker goes by, as labs print them or people say them.

@@ -782,7 +782,7 @@ const HAE_AGGREGATION_DEFAULT = 'avg'
 // precision and rounded once, instead of rounding every one-minute sample and summing the
 // error.
 function unitScale(metricName, units) {
-  if (metricName === 'weight' && units === 'kg') return 2.20462
+  if ((metricName === 'weight' || metricName === 'lean_mass') && units === 'kg') return 2.20462
   if (metricName?.includes('sleep') && units === 'min') return 1 / 60
   return 1
 }

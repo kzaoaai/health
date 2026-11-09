@@ -40,6 +40,20 @@ function viscFatCategory(vf) {
   return { label: 'Very High', color: 'text-red-400' }
 }
 
+// Skeletal muscle as a share of body weight, per measurement: InBody reports the muscle in
+// lbs, and the weight on the same scan (or the newest weight before it) gives the share.
+function smmPercents(entries) {
+  const out = []
+  let weight = null
+  for (const e of entries) {  // date-ascending
+    if (e.weight != null) weight = e.weight
+    if (e.skeletal_muscle_mass != null && weight) {
+      out.push({ date: e.date, pct: Math.round((e.skeletal_muscle_mass / weight) * 1000) / 10, lbs: e.skeletal_muscle_mass })
+    }
+  }
+  return out
+}
+
 function smmCategory(smm) {
   // Male reference: >40% is good
   if (smm >= 44) return { label: 'Excellent', color: 'text-emerald-400' }
@@ -64,7 +78,14 @@ function BodyTrendTooltip({ active, payload, unit }) {
   )
 }
 
-function BodyTrendChart({ id, title, dataKey, unit, color, entries }) {
+// Green when the change goes the healthy way for this metric, amber when it doesn't, grey
+// when neither way is better (BMR, body water).
+function deltaClass(delta, better) {
+  if (!better) return 'text-[#64748b]'
+  return (better === 'down' ? delta < 0 : delta > 0) ? 'text-emerald-400' : 'text-amber-400'
+}
+
+function BodyTrendChart({ id, title, dataKey, unit, color, entries, better = 'down' }) {
   const filtered = entries.filter(e => e[dataKey] != null)
   const latest = filtered[filtered.length - 1]
   const prev   = filtered[filtered.length - 2]
@@ -85,7 +106,7 @@ function BodyTrendChart({ id, title, dataKey, unit, color, entries }) {
         <span className="text-3xl font-bold text-white">{val ?? '—'}</span>
         {val != null && unit && <span className="text-[#475569] text-sm mb-0.5">{unit}</span>}
         {delta != null && delta !== 0 && (
-          <span className={`text-xs mb-1 font-medium ml-1 ${delta < 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+          <span className={`text-xs mb-1 font-medium ml-1 ${deltaClass(delta, better)}`}>
             {delta > 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}
           </span>
         )}
@@ -115,7 +136,7 @@ function BodyTrendChart({ id, title, dataKey, unit, color, entries }) {
   )
 }
 
-function MetricCard({ id, label, value, unit, category, delta, deltaLabel, sublabel, accent = '#7c3aed' }) {
+function MetricCard({ id, label, value, unit, category, delta, deltaLabel, sublabel, accent = '#7c3aed', better = 'down' }) {
   const isUp = delta > 0
   const isDown = delta < 0
 
@@ -132,7 +153,7 @@ function MetricCard({ id, label, value, unit, category, delta, deltaLabel, subla
         <span className="text-3xl font-bold text-white">{value ?? '—'}</span>
         {unit && <span className="text-[#475569] text-sm mb-0.5">{unit}</span>}
         {delta != null && delta !== 0 && (
-          <span className={`text-xs mb-1 font-medium ml-1 ${isDown ? 'text-emerald-400' : isUp ? 'text-amber-400' : 'text-[#475569]'}`}>
+          <span className={`text-xs mb-1 font-medium ml-1 ${deltaClass(delta, better)}`}>
             {isDown ? '↓' : '↑'} {Math.abs(delta).toFixed(1)}
           </span>
         )}
@@ -174,8 +195,17 @@ export default function BodySection({ data, events, userId, onRefresh }) {
   const prevWeight = getPrev(entries, 'weight')
   const latestBMI = getLatest(entries, 'bmi')
   const prevBMI = getPrev(entries, 'bmi')
-  const latestSMM = getLatest(entries, 'skeletal_muscle_mass')
-  const prevSMM = getPrev(entries, 'skeletal_muscle_mass')
+  const smm = smmPercents(entries)
+  const latestSMM = smm[smm.length - 1] ?? null
+  const prevSMM = smm[smm.length - 2] ?? null
+  // Body composition beyond the cards above, shown once there is any of it (an InBody
+  // scan, or body fat and lean mass from Apple Health).
+  const extras = [
+    { key: 'body_fat',         title: 'Body Fat',   unit: '%',    color: '#f59e0b', better: 'down' },
+    { key: 'lean_mass',        title: 'Lean Mass',  unit: 'lbs',  color: '#34d399', better: 'up' },
+    { key: 'bmr',              title: 'BMR',        unit: 'kcal', color: '#60a5fa', better: null },
+    { key: 'total_body_water', title: 'Body Water', unit: 'L',    color: '#38bdf8', better: null },
+  ].filter(m => entries.some(e => e[m.key] != null))
   const latestVF = getLatest(entries, 'visceral_fat')
   const prevVF = getPrev(entries, 'visceral_fat')
 
@@ -214,7 +244,7 @@ export default function BodySection({ data, events, userId, onRefresh }) {
       {/* Trend charts: Weight · SMM · Body Fat Mass */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
         <BodyTrendChart title="Weight"          dataKey="weight"              unit="lbs" color="#a78bfa" entries={entries} />
-        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit="lbs" color="#34d399" entries={entries} />
+        <BodyTrendChart id={metricAnchor('body', 'skeletal_muscle_mass')} title="Muscle Mass"     dataKey="skeletal_muscle_mass" unit="lbs" color="#34d399" entries={entries} better="up" />
         <BodyTrendChart id={metricAnchor('body', 'body_fat_mass')} title="Body Fat Mass"   dataKey="body_fat_mass"       unit="lbs" color="#f59e0b" entries={entries} />
       </div>
 
@@ -231,11 +261,12 @@ export default function BodySection({ data, events, userId, onRefresh }) {
         />
         <MetricCard
           label="Skeletal Muscle"
-          value={latestSMM}
+          value={latestSMM?.pct ?? null}
           unit="%"
-          category={latestSMM ? smmCategory(latestSMM) : null}
-          delta={latestSMM && prevSMM ? latestSMM - prevSMM : null}
-          sublabel="Muscle mass percentage"
+          category={latestSMM ? smmCategory(latestSMM.pct) : null}
+          delta={latestSMM && prevSMM ? latestSMM.pct - prevSMM.pct : null}
+          better="up"
+          sublabel={latestSMM ? `Of body weight (${latestSMM.lbs} lbs of muscle)` : 'Share of body weight'}
         />
         <MetricCard
           id={metricAnchor('body', 'visceral_fat')}
@@ -247,6 +278,14 @@ export default function BodySection({ data, events, userId, onRefresh }) {
           sublabel="Scale 1–20"
         />
       </div>
+
+      {extras.length > 0 && (
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${extras.length > 2 ? 'xl:grid-cols-4' : ''} gap-4 mt-4`}>
+          {extras.map(m => (
+            <BodyTrendChart key={m.key} id={metricAnchor('body', m.key)} title={m.title} dataKey={m.key} unit={m.unit} color={m.color} entries={entries} better={m.better} />
+          ))}
+        </div>
+      )}
 
       {showImport && (
         <ImportPanel
