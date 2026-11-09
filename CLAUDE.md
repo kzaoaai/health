@@ -15,13 +15,13 @@ npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 
 Vite proxies `/api` → `localhost:3001`, so work against `http://localhost:5173` in dev. In production Express serves `client/dist` and has an `app.get('*')` SPA fallback, so the whole app is on `:3001`.
 
-`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; today they cover `auth.js`, `sleep.js`, `fhir.js` and `units.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js`, `sleep.js`, `fhir.js` and `units.js` plus exercising endpoints with curl against a running dev server.
+`npm test` runs the unit tests in `test/` (`node:test`, no extra dependencies; they cover `auth.js`, `sleep.js`, `fhir.js`, `units.js`, and the client's `search.js` and `unitPrefs.js`). There is no linter. Beyond that, verification is `node --check` on `server.js`, `db.js`, `auth.js`, `sleep.js`, `fhir.js` and `units.js` plus exercising endpoints with curl against a running dev server.
 
 `ANTHROPIC_API_KEY` is optional: without it the server boots with OCR off and `POST /import/labs-pdf` answers 503. `ANTHROPIC_API_KEY_FILE` names a file holding the key instead (a Docker secret, say) and wins when both are set; an unreadable file leaves OCR off and logs why. `OCR_MODEL` overrides the model (default `claude-opus-5`). `.envrc` fetches it (and the Dockhand secret) via `op read` from 1Password; `make dev` sources `.envrc` itself.
 
 ## Architecture
 
-Express API (`server.js`, single file, ~1370 lines) + `db.js` for SQLite + a Vite/React SPA in `client/`. No router, no ORM, no state library.
+Express API (`server.js`, single file, ~2100 lines) + `db.js` for SQLite + a Vite/React SPA in `client/`. No router, no ORM, no state library.
 
 ### Everything is one EAV table
 
@@ -69,7 +69,7 @@ Target of the Health Auto Export iPhone app. `HAE_METRIC_MAP` renames HAE metric
 
 Sleep has three separate code paths in the same handler, and this is the most fragile part of the codebase:
 
-- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then `nightDate()` in `sleep.js` assigns each cluster an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day; a cluster starting at any other hour is a night only with ≥ 3 h asleep (`MIN_NIGHT_SLEEP_HOURS`), filed under the day it ends, and a nap (skipped) otherwise. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites.
+- **Raw per-stage intervals** (HAE "Summarize Data" *off* — what the README tells users to configure): each interval's `date` is just its calendar day, not a night. Intervals are clustered per source with a 4-hour gap threshold, then `nightDate()` in `sleep.js` assigns each cluster an "owner night": start ≥ 19:00 → next calendar day, start < 02:00 → same day; a cluster starting at any other hour is a night only with ≥ 3 h asleep (`MIN_NIGHT_SLEEP_HOURS`), filed under the day it starts, and a nap (skipped) otherwise. Clusters are accumulated per `(source, ownerDate)` before writing so a night split by a wake disturbance sums rather than overwrites. Before writing, each source's sleep rows (`SLEEP_ROWS`) are deleted across the payload's date span, so re-sending history replaces nights instead of leaving rows an older rule filed on another day.
 - **Compound nightly objects** (`totalSleep`/`deep`/`rem`/`core`, Summarize on) — nap filter only (`isNight()` in `sleep.js`, same rule); the point's own `date` is the night.
 - Plain `qty` points for everything else.
 
@@ -88,3 +88,17 @@ Styling is a dark theme with literal hex values inline in components (`bg-[#131d
 ## Deployment
 
 Multi-stage Dockerfile: `node:22` builds (compiles `better-sqlite3`, builds the client), `node:22-slim` runs. `docker-entrypoint.sh` seeds the empty `/data` volume from the baked-in `/app/data-defaults` (`cp -rn`, never clobbers), runs `scripts/migrate.js` (idempotent `INSERT OR IGNORE`), then starts the server. `compose.yaml` publishes no ports — docktail labels expose it on the Tailscale tailnet. Pushes to `main` trigger `.forgejo/workflows/docker-build-push.yml`, which pings Dockhand to redeploy and pushes an image to the Forgejo registry. The public GitHub mirror runs `.github/workflows/ci.yml` (syntax check, `npm ci`, client build, API boot smoke test) and `.github/workflows/docker-publish.yml` (multi-arch `ghcr.io/spuder/health`).
+
+## This fork
+
+This repo is the owner's own build of spuder/health and no longer tracks upstream feature for feature: features land here as the owner wants them, and only bug fixes go back upstream, as separate PRs. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`; a fix meant for upstream gets its own branch with nothing fork-only in it.
+
+Deploy: a push to `main` runs `.github/workflows/docker-publish.yml`, which publishes `ghcr.io/kzaoaai/health:latest`; the running instance is redeployed from that image (how is kept outside the repo). `client/dist` is tracked, so a local `npm run build` dirties it: `git checkout -- client/dist && git clean -fq client/dist` afterwards. The image builds its own.
+
+The repo is public: no real health values, names, hostnames, addresses or emails in code, tests, fixtures or commit messages. Test data is made up.
+
+### Open items
+
+- **Sleep re-send clearing is too wide.** In the Apple Health handler (`server.js`, `SLEEP_ROWS` / `clearNights`), the span cleared runs from the earliest interval's start date to the latest end date, not over the nights the payload actually produces. A payload whose earliest interval starts on day D (an evening start, owned by D+1, or a daytime nap) deletes D's night even when that night is not in the payload. Clear the span of owner dates in `byNight` per source instead. Found by reading the code; not yet seen in data.
+- No upstream PRs are open yet for the fork's fixes: `fix/late-sleep-nights` and `fix/sleep-night-date` (sleep night rules), `fix/lab-units`, and the muscle-share card fix, which is inside `49d7e64` with feature work and needs its own branch.
+- Ideas, not yet asked for: lab results shown in SI units as a display setting, automatic lab-report import from a document archive, and links that open a given section or card.
