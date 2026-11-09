@@ -19,10 +19,16 @@ test('a start after midnight and before 2 AM belongs to its own day', () => {
   assert.equal(nightDate('2026-11-06 00:00:00 +0200', '2026-11-06 01:00:00 +0200', 1), '2026-11-06')
 })
 
-test('a long sleep that starts after 2 AM is a night, filed under the day it ends', () => {
+test('a long sleep that starts after 2 AM is a night, filed under the day it starts', () => {
   assert.equal(nightDate('2026-11-06 04:30:00 +0200', '2026-11-06 11:30:00 +0200', 6.8), '2026-11-06')
   assert.equal(nightDate('2026-11-05 09:00:00 +0200', '2026-11-05 17:00:00 +0200', 3), '2026-11-05')
-  assert.equal(nightDate('2026-11-05 18:00:00 +0200', '2026-11-06 02:00:00 +0200', 7.5), '2026-11-06')
+  assert.equal(nightDate('2026-11-05 18:00:00 +0200', '2026-11-06 02:00:00 +0200', 7.5), '2026-11-05')
+})
+
+test('an afternoon sleep that runs past midnight stays on its own day', () => {
+  // The pattern that made 18-hour "nights": both of these used to be filed under the 9th.
+  assert.equal(nightDate('2025-03-08 15:26:06 +0200', '2025-03-09 03:12:19 +0200', 9.2), '2025-03-08')
+  assert.equal(nightDate('2025-03-09 14:12:23 +0200', '2025-03-09 23:53:23 +0200', 9.6), '2025-03-09')
 })
 
 test('a short sleep that starts after 2 AM is still a nap', () => {

@@ -944,6 +944,18 @@ app.post('/api/:userId/import/apple-health', requireUser, (req, res) => {
           if (cluster.length) addCluster(src, cluster)
         }
 
+        // The payload is the whole record for the days it covers, so clear each source's
+        // nights on those days before writing them again. Otherwise a night that a changed
+        // rule now files on another day (or reads as a nap) keeps its old row: re-sending
+        // history after the 2026-11-09 night-date fix would have left those behind.
+        const SLEEP_ROWS = ['sleep_hours', 'deep_sleep_hours', 'rem_sleep_hours', 'core_sleep_hours', 'awake_hours', 'bedtime', 'wake_time']
+        const clearNights = db.prepare(`DELETE FROM metrics WHERE source = ? AND date BETWEEN ? AND ? AND metric IN (${SLEEP_ROWS.map(() => '?').join(',')})`)
+        for (const [src, points] of bySource) {
+          const first = points.reduce((m, p) => (p.start < m ? p.start : m), points[0].start).slice(0, 10)
+          const last = points.reduce((m, p) => (p.end > m ? p.end : m), points[0].end).slice(0, 10)
+          stats.cleared = (stats.cleared ?? 0) + clearNights.run(src, first, last, ...SLEEP_ROWS).changes
+        }
+
         for (const night of byNight.values()) {
           // A night with no asleep time at all is not a night; skip it rather than
           // writing a row of zeros over a good one.

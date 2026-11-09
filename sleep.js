@@ -5,9 +5,9 @@
 // day. A session that starts at any other hour used to be skipped as a nap, which threw
 // away every night of anyone who goes to bed after 2 AM or sleeps by day. It now counts as
 // a night when it holds at least MIN_NIGHT_SLEEP_HOURS of sleep, and belongs to the day it
-// ends on: the day you wake up, which is what the evening rule gives too. A shorter one is
-// still a nap.
-
+// starts on. (It was filed under the day it ended until 2026-11-09: a sleep from 3 PM to
+// 3 AM then landed on the next day, on top of that day's own sleep, which made 15–20 hour
+// "nights" and left the day before empty.) A shorter one is still a nap.
 export const NIGHT_STARTS_AT = 19
 export const NIGHT_STARTS_BY = 2
 export const MIN_NIGHT_SLEEP_HOURS = 3
@@ -30,16 +30,17 @@ export function isNight(startH, asleepHours) {
   return startsInNightWindow(startH) || asleepHours >= MIN_NIGHT_SLEEP_HOURS
 }
 
-// The YYYY-MM-DD a session from `start` to `end` (HAE timestamps) is filed under, or null
-// when it is a nap or has no readable start.
+// The YYYY-MM-DD a session starting at `start` (an HAE timestamp) is filed under, or null
+// when it is a nap or has no readable start. `end` is not needed since 2026-11-09 and is
+// accepted so callers need not change.
 export function nightDate(start, end, asleepHours) {
   const startH = parseTimeToHours(start)
   if (!isNight(startH, asleepHours)) return null
+  if (!/^\d{4}-\d{2}-\d{2}/.test(start)) return null
   if (startH >= NIGHT_STARTS_AT) {
     const d = new Date(start.slice(0, 10) + 'T00:00:00')
     d.setDate(d.getDate() + 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
-  if (startH < NIGHT_STARTS_BY) return start.slice(0, 10)
-  return /^\d{4}-\d{2}-\d{2}/.test(end ?? '') ? end.slice(0, 10) : null
+  return start.slice(0, 10)
 }
