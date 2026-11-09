@@ -44,3 +44,22 @@ export function nightDate(start, end, asleepHours) {
   }
   return start.slice(0, 10)
 }
+
+// The days a sleep payload rewrites, per source: { src → [first, last] }, from the nights
+// it will write ({ src, ownerDate }). A re-send clears a source's rows on those days first,
+// so a night an older rule filed on another day does not linger. The span comes from the
+// nights, not from the intervals' own dates: a payload whose first interval starts on day
+// D (an evening start, which is D+1's night, or a nap) would otherwise clear D's night
+// without writing it again.
+export function nightSpans(nights) {
+  const spans = new Map()
+  for (const { src, ownerDate } of nights) {
+    const span = spans.get(src)
+    if (!span) spans.set(src, [ownerDate, ownerDate])
+    else {
+      if (ownerDate < span[0]) span[0] = ownerDate
+      if (ownerDate > span[1]) span[1] = ownerDate
+    }
+  }
+  return spans
+}

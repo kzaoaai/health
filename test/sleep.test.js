@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isNight, nightDate, parseTimeToHours } from '../sleep.js'
+import { isNight, nightDate, nightSpans, parseTimeToHours } from '../sleep.js'
 
 test('parseTimeToHours reads the clock time of an HAE timestamp', () => {
   assert.equal(parseTimeToHours('2026-07-08 23:10:30 -0600'), 23.175)
@@ -46,4 +46,18 @@ test('isNight applies the same rule to a summarized point', () => {
   assert.equal(isNight(1.9, 0.5), true)
   assert.equal(isNight(4.6, 7), true)
   assert.equal(isNight(13, 2), false)
+})
+
+test('a payload clears only the days of the nights it writes', () => {
+  // An evening start on the 10th is the 11th's night: the 10th's own night is not in the
+  // payload and must not be cleared.
+  const spans = nightSpans([
+    { src: 'Watch', ownerDate: '2026-03-11' },
+    { src: 'Watch', ownerDate: '2026-03-13' },
+    { src: 'Watch', ownerDate: '2026-03-12' },
+    { src: 'Ring', ownerDate: '2026-03-12' },
+  ])
+  assert.deepEqual(spans.get('Watch'), ['2026-03-11', '2026-03-13'])
+  assert.deepEqual(spans.get('Ring'), ['2026-03-12', '2026-03-12'])
+  assert.equal(nightSpans([]).size, 0)
 })
