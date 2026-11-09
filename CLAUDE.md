@@ -9,7 +9,7 @@ make dev          # installs root + client deps, sources .envrc, runs server.js 
 make clean        # DELETES local data/*.db — wipes every local user's data
 make build-container / stop-container   # Apple `container` runtime, binds ./data to /data
 make build-podman / stop-podman         # podman compose
-make publish      # POSTs the Dockhand webhook to redeploy (needs DOCKHAND_WEBHOOK_SECRET)
+make publish      # the original project's Dockhand redeploy webhook; unused here
 npm run migrate   # scripts/migrate.js — JSON seeds → SQLite, idempotent
 ```
 
@@ -87,17 +87,21 @@ Styling is a dark theme with literal hex values inline in components (`bg-[#131d
 
 ## Deployment
 
-Multi-stage Dockerfile: `node:22` builds (compiles `better-sqlite3`, builds the client), `node:22-slim` runs. `docker-entrypoint.sh` seeds the empty `/data` volume from the baked-in `/app/data-defaults` (`cp -rn`, never clobbers), runs `scripts/migrate.js` (idempotent `INSERT OR IGNORE`), then starts the server. `compose.yaml` publishes no ports — docktail labels expose it on the Tailscale tailnet. Pushes to `main` trigger `.forgejo/workflows/docker-build-push.yml`, which pings Dockhand to redeploy and pushes an image to the Forgejo registry. The public GitHub mirror runs `.github/workflows/ci.yml` (syntax check, `npm ci`, client build, API boot smoke test) and `.github/workflows/docker-publish.yml` (multi-arch `ghcr.io/spuder/health`).
+Multi-stage Dockerfile: `node:22` builds (compiles `better-sqlite3`, builds the client), `node:22-slim` runs. `docker-entrypoint.sh` seeds the empty `/data` volume from the baked-in `/app/data-defaults` (`cp -rn`, never clobbers), runs `scripts/migrate.js` (idempotent `INSERT OR IGNORE`), then starts the server.
 
-## This fork
+A push to `main` runs `.github/workflows/ci.yml` (syntax check, `npm ci`, client build, API boot smoke test) and `.github/workflows/docker-publish.yml`, which publishes the multi-arch `ghcr.io/kzaoaai/health:latest`. The running instance is redeployed from that image; how is kept outside the repo. `compose.yaml` (docktail labels), `.forgejo/workflows/` and `make publish` (the Dockhand webhook) are the original project's own deployment, carried over and unused here.
 
-This repo is the owner's own build of spuder/health and no longer tracks upstream feature for feature: features land here as the owner wants them, and only bug fixes go back upstream, as separate PRs. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`; a fix meant for upstream gets its own branch with nothing fork-only in it.
+`client/dist` is tracked, so a local `npm run build` dirties it: `git checkout -- client/dist && git clean -fq client/dist` afterwards. The image builds its own.
 
-Deploy: a push to `main` runs `.github/workflows/docker-publish.yml`, which publishes `ghcr.io/kzaoaai/health:latest`; the running instance is redeployed from that image (how is kept outside the repo). `client/dist` is tracked, so a local `npm run build` dirties it: `git checkout -- client/dist && git clean -fq client/dist` afterwards. The image builds its own.
+## Origin
+
+This app began as a fork of spuder/health and has since become its own app: features and fixes land here only, and nothing goes back upstream as a PR. The code is MIT-licensed from the original; `LICENSE` and its copyright line stay. The `upstream` remote is kept for reading: a fix there is ported by hand when it applies, since its commits no longer cherry-pick onto this code. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`.
 
 The repo is public: no real health values, names, hostnames, addresses or emails in code, tests, fixtures or commit messages. Test data is made up.
 
 ### Open items
 
-- No upstream PRs are open yet for the fork's fixes: `fix/late-sleep-nights` and `fix/sleep-night-date` (sleep night rules; the latter needs `fix/sleep-clear-span` folded in), `fix/lab-units`, and the muscle-share card fix, which is inside `49d7e64` with feature work and needs its own branch.
+- Upstream's open PR #9 (local-vs-UTC dates and the sleep night comparisons) may fix bugs this app inherited; not yet checked.
+- `README.md` still presents the original project: its badges, links and prebuilt image point at spuder/health.
+- GitHub still lists the repo as a fork of spuder/health, so `gh pr create` offers upstream as the base; name `--repo kzaoaai/health` explicitly.
 - Ideas, not yet asked for: lab results shown in SI units as a display setting, automatic lab-report import from a document archive, and links that open a given section or card.
