@@ -101,7 +101,7 @@ A push to `main` runs `.github/workflows/ci.yml` (syntax check, `npm ci`, client
 
 ## Origin
 
-This app began as a fork of spuder/health and has since become its own app: features and fixes land here only, and nothing goes back upstream as a PR. The code is MIT-licensed from the original; `LICENSE` and its copyright line stay. It no longer follows upstream: nothing goes back and nothing is pulled from it. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main`.
+This app began as a fork of spuder/health and has since become its own app: nothing goes back upstream and nothing is pulled from it. The code is MIT-licensed from the original; `LICENSE` and its copyright line stay. Work happens on `feat/*` and `fix/*` branches, fast-forwarded into `main` and then deleted, locally and on GitHub.
 
 The repo is public: no real health values, names, hostnames, addresses or emails in code, tests, fixtures or commit messages. Test data is made up.
 
