@@ -1461,7 +1461,15 @@ function labFileContentType(filename) {
 app.get('/api/:userId/lab-reports', requireUser, (req, res) => {
   const db = getDb(req.params.userId)
   const reports = db.prepare(`SELECT * FROM lab_reports ORDER BY date DESC, created_at DESC`).all()
-  res.json({ reports: reports.map(r => ({ ...r, markers: JSON.parse(r.markers_json ?? '[]') })) })
+  // One unreadable markers_json must not fail the list: the dashboard loads every section
+  // in a single Promise.all, so this route failing blanks the whole profile.
+  const markersOf = r => {
+    try {
+      const markers = JSON.parse(r.markers_json ?? '[]')
+      return Array.isArray(markers) ? markers : []
+    } catch { return [] }
+  }
+  res.json({ reports: reports.map(r => ({ ...r, markers: markersOf(r) })) })
 })
 
 app.get('/api/:userId/lab-reports/:id/pdf', requireUser, (req, res) => {
@@ -2013,7 +2021,6 @@ app.delete('/api/:userId/dna/files/:id', requireUser, (req, res) => {
 
 app.get('/api/:userId/protocols', requireUser, (req, res) => {
   const db = getDb(req.params.userId)
-  db.pragma('foreign_keys = ON')
   const protocols = db.prepare('SELECT * FROM protocols ORDER BY month ASC, sort_order ASC, id ASC').all()
   const subs = db.prepare('SELECT * FROM sub_protocols ORDER BY sort_order ASC, id ASC').all()
   const subsByProtocol = {}
@@ -2043,7 +2050,6 @@ app.patch('/api/:userId/protocols/:id', requireUser, (req, res) => {
 
 app.delete('/api/:userId/protocols/:id', requireUser, (req, res) => {
   const db = getDb(req.params.userId)
-  db.pragma('foreign_keys = ON')
   db.prepare('DELETE FROM protocols WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

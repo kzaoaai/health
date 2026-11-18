@@ -115,6 +115,9 @@ export function getDb(userId) {
   const dbPath = path.join(DATA_DIR, `${userId}.db`)
   const db = new Database(dbPath)
   db.pragma('journal_mode = WAL')  // safe concurrent reads
+  // SQLite enforces foreign keys per connection and leaves them off by default. Set here,
+  // the ON DELETE rules in the schema hold on every route from the first request.
+  db.pragma('foreign_keys = ON')
   db.exec(SCHEMA)
 
   // Migrations for columns added after initial deploy
