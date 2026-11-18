@@ -290,7 +290,8 @@ function Dashboard() {
       backgroundColor: '#0d1520',
       scale: 2,
       useCORS: true,
-      height: main.scrollHeight,
+      // No `height`: html2canvas measures the clone after onclone, so the image ends
+      // where the sections that are left end.
       windowHeight: main.scrollHeight,
       onclone: (doc) => {
         const el = doc.querySelector('main')
@@ -299,7 +300,8 @@ function Dashboard() {
         el.style.paddingTop = '24px'
         el.style.maxWidth = 'none'
         el.style.overflow = 'visible'
-        doc.querySelectorAll('.no-print').forEach(n => { n.style.display = 'none' })
+        // .print-exclude only hides under @media print, and the clone renders as screen.
+        doc.querySelectorAll('.no-print, .print-exclude').forEach(n => { n.style.display = 'none' })
       },
     })
     const link = document.createElement('a')
