@@ -21,6 +21,9 @@ const SOURCE_LABEL = { blood_panel: 'Blood Panel', inbody: 'InBody Scan', other:
 // whose unit could not be read, or could not be converted to the marker's unit.
 const HELD_BACK = new Set(['unknown', 'no_unit'])
 
+// A date the server will take; anything else the reader returned counts as no date.
+const isDay = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+
 // The line under a metric in the review: where its value came from, or why it is held back.
 function conversionNote(c, unit) {
   if (!c) return null
@@ -142,7 +145,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
         const keys = Object.keys(result.parsed?.metrics ?? {})
         const conversions = result.parsed?.conversions ?? {}
         setChecked(Object.fromEntries(keys.map(k => [k, !HELD_BACK.has(conversions[k]?.status)])))
-        setParsed(result.parsed)
+        setParsed({ ...result.parsed, date: isDay(result.parsed?.date) ? result.parsed.date : null })
         setFileHash(result.file_hash ?? null)
         setStoredFilename(result.filename ?? null)
         setPhase('preview')
@@ -290,7 +293,6 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
               <p className="text-white text-sm font-semibold">Review detected metrics</p>
               <p className="text-[#475569] text-xs mt-0.5">
                 {SOURCE_LABEL[parsed.source_type] ?? 'Lab Report'}
-                {parsed.date && ` · ${parsed.date}`}
                 {fileName && ` · ${fileName}`}
               </p>
             </div>
@@ -298,6 +300,19 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
               onClick={resetToIdle}
               className="text-[#475569] hover:text-[#94a3b8] text-lg leading-none transition-colors"
             >✕</button>
+          </div>
+
+          {/* Report date: the reader can miss it, or take the print date for the draw date */}
+          <div className="px-6 py-3 border-b border-[#243450] flex flex-wrap items-center gap-3">
+            <label htmlFor="import-report-date" className="text-xs text-[#94a3b8]">Report date</label>
+            <input
+              id="import-report-date"
+              type="date"
+              value={parsed.date ?? ''}
+              onChange={e => setParsed(p => ({ ...p, date: isDay(e.target.value) ? e.target.value : null }))}
+              className="w-auto"
+            />
+            {!parsed.date && <span className="text-xs text-amber-400">No date was read. Set it to import.</span>}
           </div>
 
           {/* Select all row */}
@@ -355,7 +370,7 @@ export default function ImportSection({ userId, onRefresh, reports = [] }) {
             </button>
             <button
               onClick={handleConfirm}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 || !parsed.date}
               className="flex items-center gap-2 bg-[#7c3aed] hover:bg-[#6d28d9] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors"
             >
               Import {selectedCount} metric{selectedCount !== 1 ? 's' : ''}

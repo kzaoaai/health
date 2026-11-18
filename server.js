@@ -1677,6 +1677,7 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
 app.post('/api/:userId/import/labs-confirm', requireUser, (req, res) => {
   const { date, source_type, metrics, reference_ranges, units, file_hash, filename, original_filename } = req.body
   if (!date || !metrics) return res.status(400).json({ error: 'date and metrics are required' })
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' })
 
   const validMetrics = Object.entries(metrics)
     .filter(([, v]) => v != null && !isNaN(Number(v)))
