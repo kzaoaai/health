@@ -1447,6 +1447,17 @@ function sweepAbandonedUploads(db, userId) {
   }
 }
 
+// Photos of reports come as JPEG as often as PNG; both go to Claude as an image.
+const LAB_IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
+
+// What a stored lab file is served as, from the extension it was stored under. A file
+// with any other extension was read as a PDF on import, so it is served as one.
+function labFileContentType(filename) {
+  const ext = path.extname(filename ?? '').toLowerCase()
+  if (ext === '.csv') return 'text/csv; charset=utf-8'
+  return LAB_IMAGE_TYPES[ext] ?? 'application/pdf'
+}
+
 app.get('/api/:userId/lab-reports', requireUser, (req, res) => {
   const db = getDb(req.params.userId)
   const reports = db.prepare(`SELECT * FROM lab_reports ORDER BY date DESC, created_at DESC`).all()
@@ -1464,7 +1475,8 @@ app.get('/api/:userId/lab-reports/:id/pdf', requireUser, (req, res) => {
   const downloadName = path.basename(report.original_filename || report.filename)
     .replace(/[^\x20-\x7E]/g, '')
     .replace(/"/g, '')
-  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Type', labFileContentType(pdfPath))
+  res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Content-Disposition', `inline; filename="${downloadName}"`)
   fs.createReadStream(pdfPath).pipe(res)
 })
@@ -1572,9 +1584,7 @@ app.post('/api/:userId/import/labs-pdf', requireUser, requireOcr, upload.single(
 
   const nameLower = req.file.originalname?.toLowerCase() ?? ''
   const isCsv = nameLower.endsWith('.csv')
-  // Photos of reports come as JPEG as often as PNG; both go to Claude as an image.
-  const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
-  const imageType = IMAGE_TYPES[path.extname(nameLower)] ?? null
+  const imageType = LAB_IMAGE_TYPES[path.extname(nameLower)] ?? null
   const isImage = imageType != null
 
   // ── 0. Duplicate check ────────────────────────────────────

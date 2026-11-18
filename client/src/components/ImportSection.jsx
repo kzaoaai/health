@@ -84,7 +84,7 @@ function ReportRow({ report: r, userId, onDelete }) {
           rel="noopener noreferrer"
           className="text-[#475569] hover:text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-[#243450] hover:border-[#374d6c] transition-colors"
         >
-          View PDF
+          {/\.(png|jpe?g|webp|csv)$/i.test(r.filename ?? '') ? 'View file' : 'View PDF'}
         </a>
         {confirming ? (
           <div className="flex items-center gap-1.5">
