@@ -278,8 +278,7 @@ export default function SleepSection({ data }) {
     for (let v = BT_MIN; v <= max; v += step) ticks.push(v)
     return {
       bedtimeData: rows
-        .map(e => ({ date: e.date, bedtime: Math.min(toChart(e.bedtime), max), bedtime_raw: e.bedtime }))
-        .reverse(),
+        .map(e => ({ date: e.date, bedtime: Math.min(toChart(e.bedtime), max), bedtime_raw: e.bedtime })),
       btMax: max,
       btTicks: ticks,
     }
