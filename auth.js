@@ -20,6 +20,9 @@
 //     users.json. A profile created through the socket is owned by its creator.
 //     Profiles created before access control was turned on have no owners and
 //     are hidden until you add `"owners": ["<login>"]` to them in users.json;
+//   - a login in ADMIN_USERS sees and manages every profile, owned or not, as
+//     if it were an owner of each: it can open one, change its owners, or
+//     remove it. An admin must also be in ALLOWED_USERS;
 //   - a write (anything but GET/HEAD/OPTIONS) from a browser must come from the
 //     dashboard's own pages. Browsers always send Sec-Fetch-Site; apps such as
 //     Health Auto Export send none and are not affected.
@@ -39,6 +42,7 @@ export function loadAuthConfig(env = process.env) {
     identityHeader: (env.IDENTITY_HEADER?.trim() || 'tailscale-user-login').toLowerCase(),
     allowedUsers: list(env.ALLOWED_USERS),
     devUser: env.DEV_USER?.trim().toLowerCase() || null,
+    adminUsers: list(env.ADMIN_USERS),
   }
   if (cfg.serveSocket && cfg.devUser) {
     throw new Error('DEV_USER is for development only and is refused when SERVE_SOCKET is set')
@@ -50,6 +54,13 @@ export function loadAuthConfig(env = process.env) {
     throw new Error('ALLOWED_USERS is set without SERVE_SOCKET: logins are only believed on the socket, so it would protect nothing')
   }
   cfg.enabled = Boolean(cfg.serveSocket || cfg.devUser)
+  if (cfg.adminUsers.length > 0 && !cfg.enabled) {
+    throw new Error('ADMIN_USERS is set without SERVE_SOCKET: with access control off everyone already sees every profile')
+  }
+  if (cfg.serveSocket) {
+    const locked = cfg.adminUsers.filter(u => !cfg.allowedUsers.includes(u))
+    if (locked.length) throw new Error(`ADMIN_USERS names logins that are not in ALLOWED_USERS, so they could not get in: ${locked.join(', ')}`)
+  }
   return cfg
 }
 
@@ -94,13 +105,22 @@ export function gate(cfg, log = console) {
   }
 }
 
-/** Whether the caller may see this profile. Everyone may when access control is off. */
+/** Whether the caller is an admin: a login in ADMIN_USERS, while access control is on. */
+export function isAdmin(req, cfg) {
+  return cfg.enabled && Boolean(req.who) && cfg.adminUsers.includes(req.who)
+}
+
+/**
+ * Whether the caller may see this profile, which is also what lets them change
+ * it. Everyone may when access control is off; otherwise its owners and admins.
+ */
 export function canSee(profile, req, cfg) {
   if (!cfg.enabled) return true
+  if (isAdmin(req, cfg)) return true
   return Array.isArray(profile?.owners) && profile.owners.includes(req.who)
 }
 
-/** Profiles nobody can see once access control is on, for a warning at boot. */
+/** Profiles only an admin can see once access control is on, for a warning at boot. */
 export function unownedProfiles(users) {
   return users.filter(u => !Array.isArray(u.owners) || u.owners.length === 0).map(u => u.id)
 }

@@ -118,6 +118,7 @@ tailscale serve --bg --https=443 unix:/var/lib/health/sock/serve.sock
 - The login (`Tailscale-User-Login`, or the header named in `IDENTITY_HEADER`) is believed **only on the socket**, which only the proxy connects to. The TCP port then answers `/healthz` alone, for healthchecks and uptime monitors.
 - Logins not in `ALLOWED_USERS` are refused. A profile is visible only to the logins in its `owners` list in `users.json`; a profile you create is yours. Share one with `PATCH /api/users/<id>` and `{"owners": ["you@example.com", "partner@example.com"]}`.
 - Profiles created before you turn this on have no owners and stay hidden (the server names them at startup) until you add `"owners": ["you@example.com"]` to them in `users.json`.
+- Optional: `ADMIN_USERS=you@example.com` lets those logins see and manage every profile, whoever owns it, including ones with no owners. That covers the data in them, so name only people who should be able to open everyone's profile. An admin must also be in `ALLOWED_USERS`.
 - Health Auto Export keeps working: requests from the phone carry the phone's tailnet login, so it must be signed in to Tailscale as the profile's owner.
 
 ## Getting Your User ID

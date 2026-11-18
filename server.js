@@ -213,8 +213,9 @@ app.patch('/api/users/:userId', requireUser, (req, res) => {
     }
     users[idx].units = next
   }
-  // Share a profile with another login, or hand it over. Only an owner gets
-  // here (requireUser), and the list may not be emptied, which would orphan it.
+  // Share a profile with another login, or hand it over. Only an owner or an
+  // admin gets here (requireUser), and the list may not be emptied, which would
+  // leave it to admins alone.
   if (owners !== undefined) {
     if (!auth.enabled) return res.status(400).json({ error: 'owners only applies when access control is on (SERVE_SOCKET)' })
     const parsed = parseOwners(owners)
@@ -2157,10 +2158,11 @@ if (auth.serveSocket) {
   const sock = http.createServer((req, res) => { req.door = 'socket'; app(req, res) })
   sock.listen(auth.serveSocket, () => {
     fs.chmodSync(auth.serveSocket, 0o600)
-    console.log(`[auth] dashboard on ${auth.serveSocket} for ${auth.allowedUsers.length} allowed login(s)`)
+    console.log(`[auth] dashboard on ${auth.serveSocket} for ${auth.allowedUsers.length} allowed login(s), ${auth.adminUsers.length} of them admin`)
     const hidden = unownedProfiles(readUsers())
     if (hidden.length) {
-      console.warn(`[auth] profiles with no owners are hidden from everyone: ${hidden.join(', ')}. Add "owners": ["<login>"] to them in users.json.`)
+      const from = auth.adminUsers.length ? 'everyone but admins' : 'everyone'
+      console.warn(`[auth] profiles with no owners are hidden from ${from}: ${hidden.join(', ')}. Add "owners": ["<login>"] to them in users.json.`)
     }
   })
 }

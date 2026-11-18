@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadAuthConfig, identityOf, gate, canSee, unownedProfiles, parseOwners } from '../auth.js'
+import { loadAuthConfig, identityOf, gate, canSee, isAdmin, unownedProfiles, parseOwners } from '../auth.js'
 
 const ON = { SERVE_SOCKET: '/run/health/serve.sock', ALLOWED_USERS: 'Me@Example.test, you@example.test' }
 const quiet = { warn: () => {} }
@@ -89,6 +89,33 @@ test('canSee: owners only when on; everyone when off', () => {
   assert.equal(canSee(legacy, { who: 'me@example.test' }, on), false)
   assert.equal(canSee(legacy, {}, off), true)
   assert.deepEqual(unownedProfiles([mine, legacy, { id: 'empty', owners: [] }]), ['legacy', 'empty'])
+})
+
+test('loadAuthConfig: admins must be able to get in, and need access control on', () => {
+  assert.deepEqual(loadAuthConfig(ON).adminUsers, [])
+  assert.deepEqual(loadAuthConfig({ ...ON, ADMIN_USERS: ' ME@example.test ' }).adminUsers, ['me@example.test'])
+  assert.throws(() => loadAuthConfig({ ...ON, ADMIN_USERS: 'stranger@example.test' }), /not in ALLOWED_USERS.*stranger@example\.test/)
+  assert.throws(() => loadAuthConfig({ ADMIN_USERS: 'me@example.test' }), /ADMIN_USERS is set without SERVE_SOCKET/)
+  assert.deepEqual(loadAuthConfig({ DEV_USER: 'dev@example.test', ADMIN_USERS: 'dev@example.test' }).adminUsers, ['dev@example.test'])
+})
+
+test('canSee: an admin sees every profile, owned by someone else or by nobody', () => {
+  const cfg = loadAuthConfig({ ...ON, ADMIN_USERS: 'me@example.test' })
+  const theirs = { id: 'theirs', owners: ['you@example.test'] }
+  const legacy = { id: 'legacy' }
+  const admin = { who: 'me@example.test' }
+  const other = { who: 'you@example.test' }
+  assert.equal(isAdmin(admin, cfg), true)
+  assert.equal(isAdmin(other, cfg), false)
+  assert.equal(isAdmin({}, cfg), false)
+  assert.equal(canSee(theirs, admin, cfg), true)
+  assert.equal(canSee(legacy, admin, cfg), true)
+  assert.equal(canSee(theirs, other, cfg), true)
+  assert.equal(canSee({ id: 'mine', owners: ['me@example.test'] }, other, cfg), false)
+  assert.equal(canSee(legacy, other, cfg), false)
+  // No admins configured: nobody is one, whatever their login.
+  assert.equal(isAdmin(admin, loadAuthConfig(ON)), false)
+  assert.equal(isAdmin(admin, loadAuthConfig({})), false)
 })
 
 test('parseOwners: a non-empty, normalised list or null', () => {
