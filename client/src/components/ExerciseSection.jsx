@@ -9,17 +9,10 @@ import LogModal from './LogModal'
 import { toLocalDateStr } from '../localDate'
 
 const TARGET_MINUTES = 30   // daily exercise goal
-const TARGET_HR_MINS = 20   // daily zone-2+ goal
 
 function exColor(minutes) {
   if (minutes >= TARGET_MINUTES) return '#f97316'
   if (minutes >= TARGET_MINUTES * 0.5) return '#f59e0b'
-  return '#475569'
-}
-
-function hrColor(minutes) {
-  if (minutes >= TARGET_HR_MINS) return '#ef4444'
-  if (minutes >= TARGET_HR_MINS * 0.5) return '#f59e0b'
   return '#475569'
 }
 
@@ -69,21 +62,6 @@ function ExTooltip({ active, payload }) {
   )
 }
 
-function HrTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null
-  const d = payload[0]?.payload
-  if (!d?.hr_hard_minutes) return null
-  return (
-    <div className="bg-[#131d2e] border border-[#243450] rounded-xl px-4 py-3 shadow-2xl">
-      <p className="text-[#64748b] text-xs mb-1">
-        {new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-      </p>
-      <p className="text-white text-base font-semibold">{d.hr_hard_minutes} min</p>
-      <p className="text-[#64748b] text-xs">HR &gt; 80% max</p>
-    </div>
-  )
-}
-
 const ZONES = [
   { key: 'hr_z1_min', label: 'Z1', pct: '50–60%', color: '#64748b' },
   { key: 'hr_z2_min', label: 'Z2', pct: '60–70%', color: '#3b82f6' },
@@ -126,7 +104,6 @@ export default function ExerciseSection({ data, userId, onRefresh }) {
   const hasZoneData = zoneDays.length > 0
   const maxZoneAvg  = Math.max(1, ...avgZoneMins.filter(Boolean))
 
-  const hasHrData = entries.some(e => e.hr_hard_minutes != null)
   const recent    = entries.slice(-60)
 
   return (

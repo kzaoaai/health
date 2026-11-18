@@ -17,12 +17,9 @@ export const api = {
   // ── Body ──────────────────────────────────────────────────
   getBody:    (userId)     => req(`/${userId}/body`),
   logBody:    (userId, e)  => req(`/${userId}/body`,    { method: 'POST', body: JSON.stringify(e) }),
-  deleteBody: (userId, id) => req(`/${userId}/body/${id}`, { method: 'DELETE' }),
 
   // ── Blood ─────────────────────────────────────────────────
   getBlood:    (userId)     => req(`/${userId}/blood`),
-  logBlood:    (userId, e)  => req(`/${userId}/blood`,    { method: 'POST', body: JSON.stringify(e) }),
-  deleteBlood: (userId, id) => req(`/${userId}/blood/${id}`, { method: 'DELETE' }),
   mergeMarkers:(userId, e)  => req(`/${userId}/markers/merge`, { method: 'POST', body: JSON.stringify(e) }),
 
   // ── Sleep ─────────────────────────────────────────────────

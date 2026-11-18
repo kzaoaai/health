@@ -102,8 +102,6 @@ function SleepRings({ entry, size = 220, showLabel = true, responsive = false })
   const r2 = r1 - rw - gap          // middle (deep)
   const r3 = r2 - rw - gap          // inner (rem)
 
-  const allMet = total >= TOTAL_GOAL && deep >= DEEP_GOAL && rem >= REM_GOAL
-
   const h = Math.floor(total)
   const m = Math.round((total - h) * 60)
 

@@ -85,48 +85,6 @@ function BodyForm({ heightInches, onSubmit, onClose, loading }) {
   )
 }
 
-function BloodForm({ onSubmit, onClose, loading }) {
-  const [date, setDate] = useState(today())
-  const [testosterone, setTestosterone] = useState('')
-  const [triglycerides, setTriglycerides] = useState('')
-  const [notes, setNotes] = useState('')
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSubmit({ date, testosterone: testosterone ? parseFloat(testosterone) : undefined, triglycerides: triglycerides ? parseFloat(triglycerides) : undefined, notes: notes || undefined })
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <Field label="Date">
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} required />
-      </Field>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Testosterone" sublabel="(ng/dL)">
-          <input type="number" step="1" placeholder="612" value={testosterone} onChange={e => setTestosterone(e.target.value)} />
-        </Field>
-        <Field label="Triglycerides" sublabel="(mg/dL)">
-          <input type="number" step="1" placeholder="118" value={triglycerides} onChange={e => setTriglycerides(e.target.value)} />
-        </Field>
-      </div>
-
-      <Field label="Notes" sublabel="— optional">
-        <textarea rows={2} placeholder="Quest Diagnostics, fasted, etc." value={notes} onChange={e => setNotes(e.target.value)} style={{ resize: 'none' }} />
-      </Field>
-
-      <div className="flex gap-3 pt-2">
-        <button type="button" onClick={onClose} className="flex-1 bg-[#1a2540] border border-[#243450] hover:border-[#374d6c] text-[#94a3b8] text-sm font-medium py-2.5 rounded-lg transition-colors">
-          Cancel
-        </button>
-        <button type="submit" disabled={loading} className="flex-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
-          {loading ? 'Saving...' : 'Log Panel'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
 function ExerciseForm({ onSubmit, onClose, loading }) {
   const [date, setDate] = useState(today())
   const [minutes, setMinutes] = useState('')
@@ -272,7 +230,6 @@ function EventForm({ onSubmit, onClose, loading }) {
 
 const TITLES = {
   body:     'Log Body Entry',
-  blood:    'Log Blood Panel',
   sleep:    'Log Sleep',
   exercise: 'Log Exercise',
   event:    'Add Event',
@@ -317,7 +274,6 @@ export default function LogModal({ type, heightInches, onClose, onSave }) {
         {/* Form */}
         <div className="px-6 py-5">
           {type === 'body'  && <BodyForm  heightInches={heightInches} onSubmit={handleSave} onClose={onClose} loading={loading} />}
-          {type === 'blood' && <BloodForm onSubmit={handleSave} onClose={onClose} loading={loading} />}
           {type === 'sleep'    && <SleepForm    onSubmit={handleSave} onClose={onClose} loading={loading} />}
           {type === 'exercise' && <ExerciseForm onSubmit={handleSave} onClose={onClose} loading={loading} />}
           {type === 'event' && <EventForm onSubmit={handleSave} onClose={onClose} loading={loading} />}
